@@ -76,7 +76,7 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setLoan(emi.getLoan());
         payment.setBorrower(borrower);
         payment.setPaidAmount(emi.getTotalEmiAmount());
-        payment.setPaymentMode("SIMULATION");
+        payment.setPaymentMode(PaymentMode.SIMULATION);
         payment.setPaidAt(LocalDateTime.now());
         payment.setReceiptNumber(generateReceiptNumber());
         Payment saved = paymentRepository.save(payment);

@@ -3,6 +3,7 @@ package com.loanflow.entity;
 import com.loanflow.entity.base.BaseEntity;
 import com.loanflow.entity.user.User;
 import com.loanflow.enums.EmiStatus;
+import com.loanflow.enums.PaymentMode;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.*;
 import lombok.*;
@@ -39,8 +40,9 @@ public class Payment extends BaseEntity {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal paidAmount;
 
-    @Column(nullable = false)
-    private String paymentMode = "SIMULATION";
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 30)
+    private PaymentMode paymentMode = PaymentMode.SIMULATION;
 
     @Column(nullable = false)
     private LocalDateTime paidAt;
