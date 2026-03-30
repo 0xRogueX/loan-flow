@@ -115,7 +115,7 @@ public class OverdueMonitorServiceImpl implements OverdueMonitorService {
                             .oldStatus(oldStatus)
                             .newStatus(EmiStatus.OVERDUE.name())
                             .performedBy(null)  // system action
-//                            .actorRole(LoanConstants.ACTOR_SYSTEM)
+                            .actorRole(Role.SYSTEM)
                             .remarks("Days overdue: " + tracker.getDaysOverdue()
                                     + " | Penalty: ₹" + tracker.getFixedPenaltyAmount()
                                     + " | Daily charge: ₹" + tracker.getPenaltyCharge())
@@ -159,7 +159,7 @@ public class OverdueMonitorServiceImpl implements OverdueMonitorService {
                     .oldStatus(LoanStatus.DEFAULTED.name())
                     .newStatus(LoanStatus.WRITTEN_OFF.name())
                     .performedBy(null)
-                    .actorRole(Role.valueOf(LoanConstants.ACTOR_SYSTEM))
+                    .actorRole(Role.SYSTEM)
                     .remarks("Auto written-off after "
                             + LoanConstants.WRITTEN_OFF_DAYS + " days")
                     .build());

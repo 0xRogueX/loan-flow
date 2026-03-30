@@ -64,6 +64,7 @@ public class AuthServiceImpl implements AuthService {
                 a.setAccessLevel(req.getAccessLevel());
                 yield a;
             }
+            case SYSTEM -> throw new BusinessRuleException("System role cannot be assigned to users");
         };
 
         // set common fields
