@@ -70,6 +70,7 @@ public class LoanApplication extends BaseEntity {
     @Enumerated(EnumType.STRING)
     private LoanStrategy finalStrategy;
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private ApplicationStatus status = ApplicationStatus.PENDING;

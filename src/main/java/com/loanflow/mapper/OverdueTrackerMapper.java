@@ -8,22 +8,13 @@ import java.util.List;
 @Mapper(componentModel = "spring")
 public interface OverdueTrackerMapper {
 
-    /**
-     * loan.id             → loanId
-     * emiSchedule.id      → emiScheduleId
-     * borrower.name       → borrowerName    (denormalised for officer view)
-     * borrower.email      → borrowerEmail
-     *
-     * borrower is User (abstract) — name and email live on User parent,
-     * so MapStruct accesses them without any casting.
-     */
     @Mapping(target = "loanId",        source = "loan.id")
     @Mapping(target = "emiScheduleId",  source = "emiSchedule.id")
     @Mapping(target = "borrowerName",   source = "borrower.name")
     @Mapping(target = "borrowerEmail",  source = "borrower.email")
+    @Mapping(target = "penaltySettled", expression = "java(tracker.getPenaltyStatus() != com.loanflow.enums.PenaltyStatus.SETTLED)")
     OverdueTrackerResponse toResponse(OverdueTracker tracker);
 
-    /** Used by ReportService.getOverdueSummary() detail list */
     List<OverdueTrackerResponse> toResponseList(List<OverdueTracker> trackers);
 }
 

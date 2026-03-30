@@ -75,6 +75,11 @@ public class EmiScheduleServiceImpl implements EmiScheduleService {
 
     @Override
     public List<EmiScheduleResponse> getScheduleByLoanNumber(String loanNumber) {
-        return List.of();
+        Loan loan = loanRepository.findByLoanNumber(loanNumber)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Loan not found: " + loanNumber));
+        List<EmiSchedule> schedule =
+                emiScheduleRepository.findByLoanOrderByInstallmentNumberAsc(loan);
+        return emiScheduleMapper.toResponseList(schedule);
     }
 }

@@ -23,4 +23,6 @@ public interface LoanService {
 
     // Find loan by ID
     Loan findById(UUID loanId);
+
+    Loan findByLoanNumber(String loanNumber);
 }

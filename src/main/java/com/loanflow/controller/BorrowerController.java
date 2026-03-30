@@ -5,8 +5,9 @@ import com.loanflow.dto.response.ApiResponse;
 import com.loanflow.dto.response.EmiScheduleResponse;
 import com.loanflow.dto.response.LoanApplicationResponse;
 import com.loanflow.dto.response.LoanResponse;
+import com.loanflow.entity.Loan;
 import com.loanflow.entity.user.User;
-import com.loanflow.repository.UserRepository;
+import com.loanflow.exception.UnauthorizedAccessException;
 import com.loanflow.security.SecurityUtils;
 import com.loanflow.service.EmiScheduleService;
 import com.loanflow.service.LoanApplicationService;
@@ -32,15 +33,13 @@ public class BorrowerController {
     private final LoanService loanService;
     private final EmiScheduleService emiScheduleService;
     private final SecurityUtils securityUtils;
-    private final UserRepository userRepository;
 
 
     @PostMapping("/applications")
     public ResponseEntity<ApiResponse<LoanApplicationResponse>> applyLoan(
-            @Valid @RequestBody LoanApplicationRequest request , @RequestParam UUID id) {
+            @Valid @RequestBody LoanApplicationRequest request) {
 
-        User borrower = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User borrower = securityUtils.getCurrentUser();
 
         log.info("Received loan application request from borrower: {}", borrower.getEmail());
 
@@ -50,29 +49,6 @@ public class BorrowerController {
                 .body(ApiResponse.created("Loan application submitted successfully.", response));
     }
 
-    /**
-     * POST /api/v1/borrower/applications
-     * Submits a new loan application.
-     */
-//    @PostMapping("/applications")
-//    public ResponseEntity<ApiResponse<LoanApplicationResponse>> applyLoan(
-//            @Valid @RequestBody LoanApplicationRequest request) {
-//
-//
-//        /** after authentication **/
-//        User borrower = securityUtils.getCurrentUser();
-//        log.info("Received loan application request from borrower: {}", borrower.getEmail());
-//
-//        LoanApplicationResponse response = loanApplicationService.apply(request, borrower);
-//
-//        return ResponseEntity.status(HttpStatus.CREATED)
-//                .body(ApiResponse.created("Loan application submitted successfully.", response));
-//    }
-
-    /**
-     * PUT /api/v1/borrower/applications/{applicationNumber}/cancel
-     * Cancels an existing PENDING or UNDER_REVIEW application.
-     */
     @PutMapping("/applications/{applicationNumber}/cancel")
     public ResponseEntity<ApiResponse<Void>> cancelApplication(
             @PathVariable String applicationNumber) {
@@ -85,10 +61,6 @@ public class BorrowerController {
         return ResponseEntity.ok(ApiResponse.ok("Application cancelled successfully.", null));
     }
 
-    /**
-     * GET /api/v1/borrower/applications
-     * Retrieves all loan applications submitted by the logged-in borrower.
-     */
     @GetMapping("/applications")
     public ResponseEntity<ApiResponse<List<LoanApplicationResponse>>> getMyApplications() {
 
@@ -98,10 +70,6 @@ public class BorrowerController {
         return ResponseEntity.ok(ApiResponse.ok("Applications fetched successfully.", applications));
     }
 
-    /**
-     * GET /api/v1/borrower/loans
-     * Retrieves all active, closed, or defaulted loans belonging to the logged-in borrower.
-     */
     @GetMapping("/loans")
     public ResponseEntity<ApiResponse<List<LoanResponse>>> getMyLoans() {
 
@@ -111,10 +79,6 @@ public class BorrowerController {
         return ResponseEntity.ok(ApiResponse.ok("Loans fetched successfully.", loans));
     }
 
-    /**
-     * GET /api/v1/borrower/loans/{loanNumber}/schedule
-     * Retrieves the complete EMI amortization schedule using the business key (loanNumber).
-     */
     @GetMapping("/loans/{loanNumber}/schedule")
     public ResponseEntity<ApiResponse<List<EmiScheduleResponse>>> getEmiSchedule(
             @PathVariable String loanNumber) {
@@ -122,14 +86,11 @@ public class BorrowerController {
         User borrower = securityUtils.getCurrentUser();
         log.debug("Fetching EMI schedule for loan {} by borrower {}", loanNumber, borrower.getEmail());
 
-        // Ensure the borrower actually owns this loan before returning the schedule.
-        // You will need a method in LoanService like verifyOwnership(loanNumber, borrowerId)
-        if (  securityUtils.hasRole("BORROWER")
-              &&  !securityUtils.isOwner(borrower.getId())) {
-            throw new SecurityException("You can only view your own loan schedule.");
+        Loan loan = loanService.findByLoanNumber(loanNumber);
+        if (!loan.getBorrower().getId().equals(borrower.getId())) {
+            throw new UnauthorizedAccessException("You can only view your own loan schedules.");
         }
 
-        // Changed to find the schedule by the String loanNumber instead of UUID
         List<EmiScheduleResponse> schedule = emiScheduleService.getScheduleByLoanNumber(loanNumber);
 
         return ResponseEntity.ok(ApiResponse.ok("EMI Schedule fetched successfully.", schedule));

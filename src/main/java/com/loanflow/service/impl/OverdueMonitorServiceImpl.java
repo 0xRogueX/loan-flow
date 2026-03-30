@@ -192,7 +192,7 @@ public class OverdueMonitorServiceImpl implements OverdueMonitorService {
         // Stage 1: flat fee on first detection
         if (tracker.getFixedPenaltyAmount() == null || tracker.getFixedPenaltyAmount().compareTo(BigDecimal.ZERO) == 0) {
             tracker.setFixedPenaltyAmount(LoanConstants.LATE_FEE_FLAT_AMOUNT);
-            tracker.setFixedPenaltyAmount(LoanConstants.OVERDUE_DAILY_PENALTY_RATE);
+            tracker.setPenaltyRate(LoanConstants.OVERDUE_DAILY_PENALTY_RATE);
             tracker.setPenaltyStatus(PenaltyStatus.APPLIED);
             log.debug("Fixed penalty applied for EMI {}: ₹{}",
                     emi.getInstallmentNumber(), LoanConstants.LATE_FEE_FLAT_AMOUNT);

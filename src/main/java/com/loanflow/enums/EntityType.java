@@ -4,6 +4,7 @@ public enum EntityType {
     ADMIN_PROFILE,
     BORROWER_PROFILE,
     LOAN_OFFICER_PROFILE,
+    USER,
     ADDRESS,
     LOAN_APPLICATION,
     LOAN,
