@@ -9,7 +9,6 @@ import com.loanflow.entity.Payment;
 import com.loanflow.entity.user.User;
 import com.loanflow.enums.*;
 import com.loanflow.event.PaymentReceivedEvent;
-import com.loanflow.exception.BusinessRuleException;
 import com.loanflow.exception.ResourceNotFoundException;
 import com.loanflow.exception.UnauthorizedAccessException;
 import com.loanflow.mapper.PaymentMapper;
@@ -17,13 +16,13 @@ import com.loanflow.repository.EmiScheduleRepository;
 import com.loanflow.repository.LoanRepository;
 import com.loanflow.repository.OverdueTrackerRepository;
 import com.loanflow.repository.PaymentRepository;
+import com.loanflow.security.SecurityUtils;
 import com.loanflow.service.AuditService;
 import com.loanflow.service.LoanService;
 import com.loanflow.service.PaymentService;
 import com.loanflow.util.ValidationUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.el.lang.ELArithmetic;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,7 +30,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import java.time.*;
 import java.time.format.*;
-import java.math.BigDecimal;
 
 @Service
 @RequiredArgsConstructor
@@ -46,6 +44,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final AuditService auditService;
     private final PaymentMapper paymentMapper;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final SecurityUtils securityUtils;
 
     @Override
     @Transactional
@@ -76,7 +75,7 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setLoan(emi.getLoan());
         payment.setBorrower(borrower);
         payment.setPaidAmount(emi.getTotalEmiAmount());
-        payment.setPaymentMode("SIMULATION");
+        payment.setPaymentMode(PaymentMode.SIMULATION);
         payment.setPaidAt(LocalDateTime.now());
         payment.setReceiptNumber(generateReceiptNumber());
         Payment saved = paymentRepository.save(payment);
@@ -133,6 +132,19 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional(readOnly = true)
     public List<PaymentResponse> getPaymentsByLoanNumber(String loanNumber) {
+
+        Loan loan = loanRepository.findByLoanNumber(loanNumber)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Loan not found with number: " + loanNumber));
+
+        if (!securityUtils.hasRole("LOAN_OFFICER")) {
+            // Only the borrower (or an Admin) can view payments for this loan
+            if (!securityUtils.isOwner(loan.getBorrower().getId())) {
+                throw new UnauthorizedAccessException(
+                        "Access Denied: You do not have permission to view payments for this loan.");
+            }
+        }
+
         List<Payment> payments = paymentRepository.findByLoan_LoanNumberOrderByPaidAtDesc(loanNumber);
 
         return payments.stream()

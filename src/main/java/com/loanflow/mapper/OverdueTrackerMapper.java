@@ -12,7 +12,7 @@ public interface OverdueTrackerMapper {
     @Mapping(target = "emiScheduleId",  source = "emiSchedule.id")
     @Mapping(target = "borrowerName",   source = "borrower.name")
     @Mapping(target = "borrowerEmail",  source = "borrower.email")
-    @Mapping(target = "penaltySettled", expression = "java(tracker.getPenaltyStatus() != com.loanflow.enums.PenaltyStatus.SETTLED)")
+    @Mapping(target = "penaltySettled", expression = "java(tracker.getPenaltyStatus() == com.loanflow.enums.PenaltyStatus.SETTLED)")
     OverdueTrackerResponse toResponse(OverdueTracker tracker);
 
     List<OverdueTrackerResponse> toResponseList(List<OverdueTracker> trackers);

@@ -15,6 +15,9 @@ import com.loanflow.service.PaymentService;
 import com.loanflow.service.PdfGeneratorService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -41,18 +44,14 @@ public class PaymentController {
 
     @GetMapping("/loan/{loanNumber}")
     @PreAuthorize("hasAnyRole('BORROWER','LOAN_OFFICER')")
-    public ResponseEntity<ApiResponse<List<PaymentResponse>>> getByLoan(
-            @PathVariable String loanNumber) {
-        // Optional: If Borrower, verify they own the loan first!
+    public ResponseEntity<ApiResponse<List<PaymentResponse>>> getByLoan(@PathVariable String loanNumber) {
+
+        List<PaymentResponse> payments = paymentService.getPaymentsByLoanNumber(loanNumber);
         return ResponseEntity.ok(ApiResponse.ok(
-                paymentService.getPaymentsByLoanNumber(loanNumber)));
+                "Payments retrieved successfully", payments));
     }
 
 
-    /**
-     * GET /payments/receipt/{receiptNumber}/download
-     * Downloads the official PDF receipt for a specific payment.
-     */
     @GetMapping("/receipt/{receiptNumber}/download")
     @PreAuthorize("hasAnyRole('BORROWER', 'ADMIN')")
     public ResponseEntity<byte[]> downloadReceipt(@PathVariable String receiptNumber) {
@@ -71,13 +70,13 @@ public class PaymentController {
         byte[] pdfBytes = pdfGeneratorService.generatePaymentReceipt(payment);
 
         // 4. Set headers so the browser triggers a file download
-        org.springframework.http.HttpHeaders headers = new org.springframework.http.HttpHeaders();
-        headers.setContentType(org.springframework.http.MediaType.APPLICATION_PDF);
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_PDF);
         headers.setContentDispositionFormData("attachment", "Receipt_" + receiptNumber + ".pdf");
         headers.setContentLength(pdfBytes.length);
 
         // 5. Return the file!
-        return new ResponseEntity<>(pdfBytes, headers, org.springframework.http.HttpStatus.OK);
+        return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
     }
 
 }
