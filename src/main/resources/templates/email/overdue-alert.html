@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Overdue EMI Alert</title>
+    <style>
+        body { margin:0; padding:0; background:#F1F5F9; font-family:Arial,sans-serif; }
+        .wrapper { max-width:600px; margin:32px auto; background:#FFFFFF;
+                   border-radius:8px; overflow:hidden; border:1px solid #E2E8F0; }
+        .header { background:#7C2D12; padding:32px 40px; }
+        .header h1 { margin:0; color:#FFFFFF; font-size:22px; font-weight:600; }
+        .header p  { margin:6px 0 0; color:#FED7AA; font-size:14px; }
+        .body   { padding:32px 40px; }
+        .body p { color:#334155; font-size:15px; line-height:1.7; margin:0 0 16px; }
+        .overdue-box { background:#FFF1F2; border:1px solid #FECDD3;
+                       border-left:4px solid #7C2D12;
+                       border-radius:0 6px 6px 0; padding:20px 24px; margin:20px 0; }
+        .overdue-box .row { display:flex; justify-content:space-between;
+                            align-items:center; margin-bottom:12px; }
+        .overdue-box .row:last-child { margin-bottom:0; }
+        .overdue-box .label { font-size:13px; color:#9F1239; }
+        .overdue-box .val   { font-size:15px; color:#4C0519; font-weight:600; }
+        .urgent { background:#FEF2F2; border:1px solid #FECACA;
+                  border-radius:6px; padding:14px 18px; margin:16px 0;
+                  font-size:14px; color:#7F1D1D; }
+        .footer { background:#F8FAFC; padding:20px 40px;
+                  border-top:1px solid #E2E8F0; }
+        .footer p { margin:0; color:#94A3B8; font-size:12px; }
+    </style>
+</head>
+<body>
+<div class="wrapper">
+
+    <div class="header">
+        <h1>Overdue EMI Alert</h1>
+        <p>EMI Scheduler &amp; Loan Management</p>
+    </div>
+
+    <div class="body">
+        <p>Dear <strong th:text="${borrowerName}">Borrower</strong>,</p>
+        <p>
+            Your EMI payment was due on
+            <strong th:text="${dueDate}">01 Apr 2025</strong>
+            and has not yet been received.
+            Your account is now marked as <strong>overdue</strong>.
+        </p>
+
+        <div class="overdue-box">
+            <div class="row">
+                <span class="label">Original Due Date</span>
+                <span class="val" th:text="${dueDate}">01 Apr 2025</span>
+            </div>
+            <div class="row">
+                <span class="label">Days Overdue</span>
+                <span class="val" th:text="${daysOverdue} + ' days'">1 days</span>
+            </div>
+            <div class="row">
+                <span class="label">Late Fee Applied</span>
+                <span class="val">
+                    &#x20B9;[[${#numbers.formatDecimal(
+                        penalty, 1, 'COMMA', 2, 'POINT')}]]
+                </span>
+            </div>
+        </div>
+
+        <div class="urgent">
+            <strong>Action Required:</strong>
+            Please log in to your account and make your payment immediately.
+            Continued non-payment may affect your loan status.
+        </div>
+
+        <p style="color:#64748B; font-size:13px;">
+            Loan Reference: <code th:text="${loanId}">uuid</code>
+        </p>
+    </div>
+
+    <div class="footer">
+        <p>This is an automated message. Please do not reply to this email.</p>
+    </div>
+</div>
+</body>
+</html>

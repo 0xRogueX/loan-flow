@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loan Application Received</title>
+    <style>
+        body { margin:0; padding:0; background:#F1F5F9; font-family:Arial,sans-serif; }
+        .wrapper { max-width:600px; margin:32px auto; background:#FFFFFF;
+                   border-radius:8px; overflow:hidden;
+                   border:1px solid #E2E8F0; }
+        .header { background:#1B3A5C; padding:32px 40px; }
+        .header h1 { margin:0; color:#FFFFFF; font-size:22px; font-weight:600; }
+        .header p  { margin:6px 0 0; color:#CBD5E1; font-size:14px; }
+        .body   { padding:32px 40px; }
+        .body p { color:#334155; font-size:15px; line-height:1.7; margin:0 0 16px; }
+        .card   { background:#F8FAFC; border:1px solid #E2E8F0;
+                  border-radius:6px; padding:20px 24px; margin:20px 0; }
+        .card .label { font-size:12px; color:#64748B;
+                       text-transform:uppercase; letter-spacing:.05em; }
+        .card .value { font-size:20px; color:#1B3A5C;
+                       font-weight:600; margin-top:4px; }
+        .badge-pending  { display:inline-block; padding:4px 12px;
+                          background:#EFF6FF; color:#1E40AF;
+                          border-radius:20px; font-size:13px; font-weight:600; }
+        .badge-rejected { display:inline-block; padding:4px 12px;
+                          background:#FFF1F2; color:#9F1239;
+                          border-radius:20px; font-size:13px; font-weight:600; }
+        .footer { background:#F8FAFC; padding:20px 40px;
+                  border-top:1px solid #E2E8F0; }
+        .footer p { margin:0; color:#94A3B8; font-size:12px; }
+    </style>
+</head>
+<body>
+<div class="wrapper">
+
+    <!-- Header -->
+    <div class="header">
+        <h1>Loan Application Received</h1>
+        <p>EMI Scheduler &amp; Loan Management</p>
+    </div>
+
+    <!-- Body -->
+    <div class="body">
+        <p>Dear <strong th:text="${borrowerName}">Borrower</strong>,</p>
+
+        <!-- PENDING path -->
+        <p th:if="${status.name() == 'PENDING'}">
+            Thank you for submitting your loan application.
+            Our loan officer will review it shortly.
+            You will receive an update once a decision is made.
+        </p>
+
+        <!-- AUTO-REJECTED path (high DTI) -->
+        <p th:if="${status.name() == 'REJECTED'}">
+            We have reviewed your loan application.
+            Unfortunately, based on your current debt-to-income ratio,
+            we are unable to process this application at this time.
+            You may re-apply after reducing your existing debt obligations.
+        </p>
+
+        <!-- Loan amount card -->
+        <div class="card">
+            <div class="label">Requested Amount</div>
+            <div class="value">
+                &#x20B9;
+                <span th:text=
+                              "${#numbers.formatDecimal(amount, 1, 'COMMA', 2, 'POINT')}">
+                    0.00
+                </span>
+            </div>
+        </div>
+
+        <!-- Status badge -->
+        <p>
+            Application Status:&nbsp;
+            <span class="badge-pending"
+                  th:if="${status.name() == 'PENDING'}">
+                Under Review
+            </span>
+            <span class="badge-rejected"
+                  th:if="${status.name() == 'REJECTED'}">
+                Not Eligible
+            </span>
+        </p>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+        <p>This is an automated message. Please do not reply to this email.</p>
+        <p style="margin-top:6px;">
+            &copy; 2026 EMI Loan Scheduler. All rights reserved.
+        </p>
+    </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,45 @@
+server:
+  port: ${SERVER_PORT}
+
+spring:
+  application:
+    name: loan-flow
+
+  # DATABASE CONNECTION (PostgreSQL)
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+
+  # JPA / HIBERNATE CONFIGURATION
+  jpa:
+    hibernate:
+      ddl-auto: ${JPA_DDL_AUTO}
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # EMAIL CONFIGURATION (For Notifications)
+  mail:
+    host: ${MAIL_HOST}
+    port: ${MAIL_PORT}
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
+## EXTERNAL API INTEGRATION
+#credit-bureau:
+#  base-url: ${CREDIT_BASE_URL}
+#  timeout-ms: ${CREDIT_TIMEOUT}
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration-ms: ${JWT_EXPIRATION_MS}         # 24 hours
