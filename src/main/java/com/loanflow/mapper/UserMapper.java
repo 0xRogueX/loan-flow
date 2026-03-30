@@ -13,11 +13,8 @@ import java.util.List;
 @Mapper(componentModel = "spring")
 public interface UserMapper {
 
-    /**
-     * role field calls user.getRole() — MapStruct resolves the abstract method
-     * through the concrete subclass at runtime automatically.
-     */
-    @Mapping(target = "role", expression = "java(user.getRole())")
+    @Mapping(target = "role",     expression = "java(user.getRole())")
+    @Mapping(target = "isActive", source = "active")
     UserResponse toResponse(User user);
 
     /** Batch mapping — used by AdminController.getAllUsers() */

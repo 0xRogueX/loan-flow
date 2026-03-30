@@ -20,6 +20,8 @@ public interface LoanRepository extends JpaRepository<Loan, UUID> {
     @Query(value = "SELECT nextval('loan_number_seq')", nativeQuery = true)
     Long getNextLoanSequence();
 
+    Optional<Loan> findByLoanNumber(String loanNumber);
+
     // ReportService: count per status for portfolio summary
     long countByStatus(LoanStatus status);
 

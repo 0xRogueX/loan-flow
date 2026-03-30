@@ -49,6 +49,7 @@ public class AuthServiceImpl implements AuthService {
                 b.setMonthlyIncome(req.getMonthlyIncome());
                 b.setPanNumber(req.getPanNumber());
                 b.setOccupation(req.getOccupation());
+                b.setDateOfBirth(req.getDateOfBirth());
                 yield b;
             }
             case LOAN_OFFICER -> {
@@ -70,6 +71,7 @@ public class AuthServiceImpl implements AuthService {
         user.setEmail(req.getEmail());
         user.setPassword(passwordEncoder.encode(req.getPassword()));
         user.setPhone(req.getPhone());
+        user.setRole(req.getRole());
 
         user.setActive(true);
         user.setDeleted(false);

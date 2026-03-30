@@ -122,6 +122,7 @@ public class LoanServiceImpl implements LoanService {
         loan.setStrategy(finalStrategy);
         loan.setStatus(LoanStatus.ACTIVE);
         loan.setDisbursedAt(LocalDateTime.now());
+        loan.setOutstandingPrincipal(application.getRequestedAmount());
 
         Loan savedLoan = loanRepository.save(loan);
 
@@ -135,8 +136,8 @@ public class LoanServiceImpl implements LoanService {
         BigDecimal dtiFinal = dtiCalculationService.calculateFinalDti(
                 internalEmi,
                 externalEmi,
-                application.getMonthlyIncome(),
-                baseEmi);
+                baseEmi,
+                application.getMonthlyIncome());
 
 //        // Enforce the 40% DTI Rule
 //        if (dtiFinal.compareTo(new BigDecimal("40.00")) > 0) {
@@ -214,6 +215,12 @@ public class LoanServiceImpl implements LoanService {
     public Loan findById(UUID loanId) {
         return loanRepository.findById(loanId)
                 .orElseThrow(() -> new ResourceNotFoundException("Loan not found: " + loanId));
+    }
+
+    @Override
+    public Loan findByLoanNumber(String loanNumber) {
+        return loanRepository.findByLoanNumber(loanNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Loan not found: " + loanNumber));
     }
 
 }

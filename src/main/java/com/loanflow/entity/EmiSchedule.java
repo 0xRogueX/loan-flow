@@ -51,6 +51,7 @@ public class EmiSchedule extends BaseEntity {
     @Column(nullable = false, precision = 15, scale = 2)
     private BigDecimal remainingBalance;       // after paying this installment
 
+    @Builder.Default
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private EmiStatus status = EmiStatus.PENDING;

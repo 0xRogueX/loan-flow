@@ -5,8 +5,9 @@ import com.loanflow.dto.response.ApiResponse;
 import com.loanflow.dto.response.EmiScheduleResponse;
 import com.loanflow.dto.response.LoanApplicationResponse;
 import com.loanflow.dto.response.LoanResponse;
+import com.loanflow.entity.Loan;
 import com.loanflow.entity.user.User;
-import com.loanflow.repository.UserRepository;
+import com.loanflow.exception.UnauthorizedAccessException;
 import com.loanflow.security.SecurityUtils;
 import com.loanflow.service.EmiScheduleService;
 import com.loanflow.service.LoanApplicationService;
@@ -32,15 +33,13 @@ public class BorrowerController {
     private final LoanService loanService;
     private final EmiScheduleService emiScheduleService;
     private final SecurityUtils securityUtils;
-    private final UserRepository userRepository;
 
 
     @PostMapping("/applications")
     public ResponseEntity<ApiResponse<LoanApplicationResponse>> applyLoan(
-            @Valid @RequestBody LoanApplicationRequest request , @RequestParam UUID id) {
+            @Valid @RequestBody LoanApplicationRequest request) {
 
-        User borrower = userRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("User not found"));
+        User borrower = securityUtils.getCurrentUser();
 
         log.info("Received loan application request from borrower: {}", borrower.getEmail());
 
@@ -122,14 +121,12 @@ public class BorrowerController {
         User borrower = securityUtils.getCurrentUser();
         log.debug("Fetching EMI schedule for loan {} by borrower {}", loanNumber, borrower.getEmail());
 
-        // Ensure the borrower actually owns this loan before returning the schedule.
-        // You will need a method in LoanService like verifyOwnership(loanNumber, borrowerId)
-        if (  securityUtils.hasRole("BORROWER")
-              &&  !securityUtils.isOwner(borrower.getId())) {
-            throw new SecurityException("You can only view your own loan schedule.");
+        // Ownership check: verify this loan belongs to the authenticated borrower
+        Loan loan = loanService.findByLoanNumber(loanNumber);
+        if (!loan.getBorrower().getId().equals(borrower.getId())) {
+            throw new UnauthorizedAccessException("You can only view your own loan schedule.");
         }
 
-        // Changed to find the schedule by the String loanNumber instead of UUID
         List<EmiScheduleResponse> schedule = emiScheduleService.getScheduleByLoanNumber(loanNumber);
 
         return ResponseEntity.ok(ApiResponse.ok("EMI Schedule fetched successfully.", schedule));
