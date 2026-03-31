@@ -1,0 +1,313 @@
+@startuml Services and Repositories
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam packageFontSize 12
+skinparam linetype ortho
+hide empty members
+
+' ─────────────────────────────────────────────
+' SERVICE INTERFACES
+' ─────────────────────────────────────────────
+package "com.loanflow.service" {
+
+    interface AuditService {
+        + log(request : AuditRequest) : void
+        + getAllAuditLogs(pageable : Pageable) : Page<AuditLogResponse>
+    }
+
+    interface AuthService {
+        + register(req : RegisterRequest) : AuthResponse
+        + login(req : LoginRequest) : AuthResponse
+    }
+
+    interface DtiCalculationService {
+        + calculateInitialDti(internalEmi : BigDecimal, externalEmi : BigDecimal, monthlyIncome : BigDecimal) : BigDecimal
+        + calculateFinalDti(internalEmi : BigDecimal, externalEmi : BigDecimal, newLoanEmi : BigDecimal, monthlyIncome : BigDecimal) : BigDecimal
+        + suggestStrategy(dtiInitial : BigDecimal, tenureMonths : int) : LoanStrategy
+        + validateIncome(income : BigDecimal) : void
+    }
+
+    interface EmiScheduleService {
+        + generateSchedule(loan : Loan, strategy : EmiCalculationStrategy) : BigDecimal
+        + getScheduleByLoan(loanId : Long) : List<EmiScheduleResponse>
+        + getScheduleByLoanNumber(loanNumber : String) : List<EmiScheduleResponse>
+    }
+
+    interface LoanApplicationService {
+        + apply(request : LoanApplicationRequest, borrower : User) : LoanApplicationResponse
+        + cancelApplication(applicationNumber : String, borrower : User) : void
+        + getPendingApplications() : List<LoanApplicationResponse>
+        + getMyApplications(borrower : User) : List<LoanApplicationResponse>
+    }
+
+    interface LoanService {
+        + processDecision(applicationNumber : String, request : LoanDecisionRequest, officer : User) : LoanResponse
+        + closeLoanIfCompleted(loan : Loan) : void
+        + getMyLoans(borrower : User) : List<LoanResponse>
+        + findById(loanId : Long) : Loan
+        + findByLoanNumber(loanNumber : String) : Loan
+    }
+
+    interface LoanStatusTransitionService {
+        + transition(loan : Loan, newStatus : LoanStatus, changeBy : User, reason : String) : void
+    }
+
+    interface NotificationService {
+        + send(recipient : User, loan : Loan, eventType : NotificationEventType, subject : String, templateName : String, model : Map<String,Object>) : void
+        + resend(notification : Notification) : void
+    }
+
+    interface OverdueMonitorService {
+        + scanAndMarkOverdue() : void
+        + scanAndMarkWrittenOff() : void
+    }
+
+    interface PaymentService {
+        + simulatePayment(request : PaymentSimulationRequest, borrower : User) : PaymentResponse
+        + getPaymentsByLoanNumber(loanNumber : String) : List<PaymentResponse>
+    }
+
+    interface PdfGeneratorService {
+        + generatePaymentReceipt(payment : Payment) : byte[]
+    }
+
+    interface ReportService {
+        + getOverdueSummary() : OverdueSummaryResponse
+        + getPortfolioSummary() : LoanPortfolioResponse
+    }
+
+    interface UserService {
+        + getAllUsers() : List<UserResponse>
+        + deactivateUser(userId : Long) : void
+    }
+}
+
+' ─────────────────────────────────────────────
+' SERVICE IMPLEMENTATIONS
+' ─────────────────────────────────────────────
+package "com.loanflow.service.impl" {
+
+    class AuditServiceImpl {
+        - auditLogRepository : AuditLogRepository
+        - auditLogMapper : AuditLogMapper
+    }
+
+    class AuthServiceImpl {
+        - userRepository : UserRepository
+        - passwordEncoder : PasswordEncoder
+        - authenticationManager : AuthenticationManager
+        - jwtTokenProvider : JwtTokenProvider
+    }
+
+    class DtiCalculationServiceImpl {
+    }
+
+    class EmiScheduleServiceImpl {
+        - emiScheduleRepository : EmiScheduleRepository
+        - emiScheduleMapper : EmiScheduleMapper
+        - loanRepository : LoanRepository
+    }
+
+    class LoanApplicationServiceImpl {
+        - loanApplicationRepository : LoanApplicationRepository
+        - loanRepository : LoanRepository
+        - dtiCalculationService : DtiCalculationService
+        - creditBureauService : CreditBureauService
+        - auditService : AuditService
+        - loanApplicationMapper : LoanApplicationMapper
+        - eventPublisher : ApplicationEventPublisher
+    }
+
+    class LoanServiceImpl {
+        - loanApplicationRepository : LoanApplicationRepository
+        - loanRepository : LoanRepository
+        - emiScheduleRepository : EmiScheduleRepository
+        - emiScheduleService : EmiScheduleService
+        - dtiCalculationService : DtiCalculationService
+        - loanStatusTransitionService : LoanStatusTransitionService
+        - loanStrategyFactory : LoanStrategyFactory
+        - auditService : AuditService
+        - loanMapper : LoanMapper
+        - eventPublisher : ApplicationEventPublisher
+    }
+
+    class LoanStatusTransitionServiceImpl {
+        - loanRepository : LoanRepository
+        - loanStatusHistoryRepository : LoanStatusHistoryRepository
+        - auditService : AuditService
+    }
+
+    class NotificationServiceImpl {
+        - notificationRepository : NotificationRepository
+        - mailSender : JavaMailSender
+        - templateEngine : TemplateEngine
+    }
+
+    class OverdueMonitorServiceImpl {
+        - emiScheduleRepository : EmiScheduleRepository
+        - overdueTrackerRepository : OverdueTrackerRepository
+        - loanRepository : LoanRepository
+        - loanStatusTransitionService : LoanStatusTransitionService
+        - auditService : AuditService
+        - eventPublisher : ApplicationEventPublisher
+    }
+
+    class PaymentServiceImpl {
+        - emiScheduleRepository : EmiScheduleRepository
+        - paymentRepository : PaymentRepository
+        - overdueTrackerRepository : OverdueTrackerRepository
+        - loanRepository : LoanRepository
+        - loanService : LoanService
+        - auditService : AuditService
+        - paymentMapper : PaymentMapper
+        - applicationEventPublisher : ApplicationEventPublisher
+        - securityUtils : SecurityUtils
+    }
+
+    class PdfGeneratorServiceImpl {
+    }
+
+    class ReportServiceImpl {
+        - loanRepository : LoanRepository
+        - overdueTrackerRepository : OverdueTrackerRepository
+    }
+
+    class UserServiceImpl {
+        - userRepository : UserRepository
+        - userMapper : UserMapper
+    }
+}
+
+' ─────────────────────────────────────────────
+' REPOSITORIES
+' ─────────────────────────────────────────────
+package "com.loanflow.repository" {
+
+    interface AuditLogRepository {
+        + findAllByOrderByCreatedAtDesc(pageable : Pageable) : Page<AuditLog>
+    }
+
+    interface BorrowerRepository {
+    }
+
+    interface EmiScheduleRepository {
+        + findByLoanOrderByInstallmentNumberAsc(loan : Loan) : List<EmiSchedule>
+        + findByStatusAndDueDateBefore(status : EmiStatus, date : LocalDate) : List<EmiSchedule>
+        + findUpcomingEmisWithBorrower(status : EmiStatus, dueDate : LocalDate) : List<EmiSchedule>
+        + countByLoanAndStatusNot(loan : Loan, status : EmiStatus) : Long
+    }
+
+    interface LoanApplicationRepository {
+        + getNextApplicationSequence() : Long
+        + existsByBorrowerAndStatusIn(borrower : User, statuses : Collection<ApplicationStatus>) : boolean
+        + findByApplicationNumber(applicationNumber : String) : Optional<LoanApplication>
+        + findByBorrower(borrower : User) : List<LoanApplication>
+        + findByStatusOrderByCreatedAtAsc(status : ApplicationStatus) : List<LoanApplication>
+        + findByBorrowerOrderByCreatedAtDesc(borrower : User) : List<LoanApplication>
+    }
+
+    interface LoanOfficerRepository {
+    }
+
+    interface LoanRepository {
+        + getNextLoanSequence() : Long
+        + findByLoanNumber(loanNumber : String) : Optional<Loan>
+        + countByStatus(status : LoanStatus) : long
+        + sumAllApprovedAmounts() : BigDecimal
+        + countByBorrowerAndStatus(borrower : User, status : LoanStatus) : Long
+        + findByBorrowerAndStatus(borrower : User, status : LoanStatus) : List<Loan>
+        + findByBorrowerOrderByCreatedAtDesc(borrower : User) : List<Loan>
+        + findByStatusAndUpdatedAtBefore(status : LoanStatus, cutoff : LocalDateTime) : List<Loan>
+        + sumActiveMonthlyEmi(borrowerId : Long) : Optional<BigDecimal>
+    }
+
+    interface LoanStatusHistoryRepository {
+    }
+
+    interface NotificationRepository {
+        + findByStatusAndRetryCountLessThan(status : NotificationStatus, maxRetries : int) : List<Notification>
+    }
+
+    interface OverdueTrackerRepository {
+        + findByEmiSchedule(emiSchedule : EmiSchedule) : Optional<OverdueTracker>
+        + findByResolvedAtIsNull() : List<OverdueTracker>
+        + findByLoanAndResolvedAtIsNull(loan : Loan) : List<OverdueTracker>
+        + countByResolvedAtIsNull() : long
+        + sumOutstandingPenalty(status : PenaltyStatus) : BigDecimal
+        + findMaxDaysOverdue() : Integer
+    }
+
+    interface PaymentRepository {
+        + getNextReceiptSequence() : Long
+        + existsByEmiSchedule(emiSchedule : EmiSchedule) : boolean
+        + findByLoan_LoanNumberOrderByPaidAtDesc(loanNumber : String) : List<Payment>
+        + findByLoanOrderByPaidAtDesc(loan : Loan) : List<Payment>
+        + findByReceiptNumber(receiptNumber : String) : Optional<Payment>
+    }
+
+    interface UserRepository {
+        + findByEmail(email : String) : Optional<User>
+        + existsByEmail(email : String) : boolean
+    }
+}
+
+' ─────────────────────────────────────────────
+' INTERFACE REALIZATIONS
+' ─────────────────────────────────────────────
+AuditService <|.. AuditServiceImpl
+AuthService <|.. AuthServiceImpl
+DtiCalculationService <|.. DtiCalculationServiceImpl
+EmiScheduleService <|.. EmiScheduleServiceImpl
+LoanApplicationService <|.. LoanApplicationServiceImpl
+LoanService <|.. LoanServiceImpl
+LoanStatusTransitionService <|.. LoanStatusTransitionServiceImpl
+NotificationService <|.. NotificationServiceImpl
+OverdueMonitorService <|.. OverdueMonitorServiceImpl
+PaymentService <|.. PaymentServiceImpl
+PdfGeneratorService <|.. PdfGeneratorServiceImpl
+ReportService <|.. ReportServiceImpl
+UserService <|.. UserServiceImpl
+
+' ─────────────────────────────────────────────
+' SERVICE → SERVICE DEPENDENCIES
+' ─────────────────────────────────────────────
+LoanApplicationServiceImpl --> DtiCalculationService
+LoanApplicationServiceImpl --> AuditService
+LoanServiceImpl --> EmiScheduleService
+LoanServiceImpl --> DtiCalculationService
+LoanServiceImpl --> LoanStatusTransitionService
+LoanServiceImpl --> AuditService
+LoanStatusTransitionServiceImpl --> AuditService
+PaymentServiceImpl --> LoanService
+PaymentServiceImpl --> AuditService
+OverdueMonitorServiceImpl --> LoanStatusTransitionService
+OverdueMonitorServiceImpl --> AuditService
+
+' ─────────────────────────────────────────────
+' SERVICE → REPOSITORY DEPENDENCIES
+' ─────────────────────────────────────────────
+AuditServiceImpl --> AuditLogRepository
+AuthServiceImpl --> UserRepository
+EmiScheduleServiceImpl --> EmiScheduleRepository
+EmiScheduleServiceImpl --> LoanRepository
+LoanApplicationServiceImpl --> LoanApplicationRepository
+LoanApplicationServiceImpl --> LoanRepository
+LoanServiceImpl --> LoanApplicationRepository
+LoanServiceImpl --> LoanRepository
+LoanServiceImpl --> EmiScheduleRepository
+LoanStatusTransitionServiceImpl --> LoanRepository
+LoanStatusTransitionServiceImpl --> LoanStatusHistoryRepository
+NotificationServiceImpl --> NotificationRepository
+OverdueMonitorServiceImpl --> EmiScheduleRepository
+OverdueMonitorServiceImpl --> OverdueTrackerRepository
+OverdueMonitorServiceImpl --> LoanRepository
+PaymentServiceImpl --> EmiScheduleRepository
+PaymentServiceImpl --> PaymentRepository
+PaymentServiceImpl --> OverdueTrackerRepository
+PaymentServiceImpl --> LoanRepository
+ReportServiceImpl --> LoanRepository
+ReportServiceImpl --> OverdueTrackerRepository
+UserServiceImpl --> UserRepository
+
+@enduml

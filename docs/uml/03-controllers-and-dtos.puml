@@ -1,0 +1,329 @@
+@startuml Controllers and DTOs
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam packageFontSize 12
+skinparam linetype ortho
+hide empty members
+
+' ─────────────────────────────────────────────
+' REQUEST DTOs
+' ─────────────────────────────────────────────
+package "com.loanflow.dto.request" {
+
+    class AuditRequest {
+        - entityType : EntityType
+        - entityId : Long
+        - action : String
+        - oldStatus : String
+        - newStatus : String
+        - performedBy : User
+        - actorRole : Role
+        - remarks : String
+    }
+
+    class LoanApplicationRequest {
+        - requestedAmount : BigDecimal
+        - tenureMonths : Integer
+        - monthlyIncome : BigDecimal
+    }
+
+    class LoanDecisionRequest {
+        - approved : Boolean
+        - overrideStrategy : LoanStrategy
+        - interestRatePerAnnum : BigDecimal
+        - rejectionReason : String
+    }
+
+    class LoginRequest {
+        - email : String
+        - password : String
+    }
+
+    class PaymentSimulationRequest {
+        - emiScheduleId : Long
+    }
+
+    class RegisterRequest {
+        - name : String
+        - email : String
+        - password : String
+        - phone : String
+        - role : Role
+        - monthlyIncome : BigDecimal
+        - panNumber : String
+        - occupation : String
+        - dateOfBirth : LocalDate
+        - address : Address
+        - employeeId : String
+        - designation : String
+        - loansApprovedCount : Integer
+        - loansRejectedCount : Integer
+        - accessLevel : AdminAccessLevel
+    }
+}
+
+' ─────────────────────────────────────────────
+' RESPONSE DTOs
+' ─────────────────────────────────────────────
+package "com.loanflow.dto.response" {
+
+    class ApiResponse<T> {
+        - success : boolean
+        - statusCode : int
+        - message : String
+        - data : T
+        - timestamp : LocalDateTime
+        + {static} ok(data : T) : ApiResponse<T>
+        + {static} ok(message : String, data : T) : ApiResponse<T>
+        + {static} created(message : String, data : T) : ApiResponse<T>
+        + {static} error(statusCode : int, message : String) : ApiResponse<T>
+        + {static} validationError(errors : T) : ApiResponse<T>
+    }
+
+    class AuthResponse {
+        - token : String
+        - role : Role
+        - name : String
+        - email : String
+    }
+
+    class UserResponse {
+        - id : Long
+        - name : String
+        - email : String
+        - phone : String
+        - role : Role
+        - isActive : boolean
+        - createdAt : LocalDateTime
+    }
+
+    class LoanApplicationResponse {
+        - id : Long
+        - applicationNumber : String
+        - requestedAmount : BigDecimal
+        - tenureMonths : Integer
+        - monthlyIncome : BigDecimal
+        - existingMonthlyEmi : BigDecimal
+        - calculatedDti : BigDecimal
+        - suggestedStrategy : LoanStrategy
+        - finalStrategy : LoanStrategy
+        - status : ApplicationStatus
+        - rejectionReason : String
+        - bureauStatus : BureauStatus
+        - createdAt : LocalDateTime
+        - reviewedAt : LocalDateTime
+        - reviewedByName : String
+    }
+
+    class LoanResponse {
+        - id : Long
+        - loanNumber : String
+        - applicationId : Long
+        - approvedAmount : BigDecimal
+        - interestRatePerAnnum : BigDecimal
+        - tenureMonths : Integer
+        - strategy : LoanStrategy
+        - monthlyEmi : BigDecimal
+        - outstandingPrincipal : BigDecimal
+        - overdueCount : Integer
+        - status : LoanStatus
+        - disbursedAt : LocalDateTime
+        - closedAt : LocalDateTime
+        - approvedByName : String
+    }
+
+    class EmiScheduleResponse {
+        - emiScheduleId : Long
+        - installmentNumber : Integer
+        - dueDate : LocalDate
+        - principalAmount : BigDecimal
+        - interestAmount : BigDecimal
+        - totalEmiAmount : BigDecimal
+        - remainingBalance : BigDecimal
+        - status : EmiStatus
+        - paidAt : LocalDateTime
+    }
+
+    class PaymentResponse {
+        - id : Long
+        - receiptNumber : String
+        - loanId : Long
+        - installmentNumber : Integer
+        - paidAmount : BigDecimal
+        - paymentMode : PaymentMode
+        - paidAt : LocalDateTime
+    }
+
+    class AuditLogResponse {
+        - id : Long
+        - entityType : EntityType
+        - entityId : Long
+        - action : String
+        - oldStatus : String
+        - newStatus : String
+        - changeDetailJson : String
+        - performedByName : String
+        - actorRole : Role
+        - remarks : String
+        - createdAt : LocalDateTime
+    }
+
+    class LoanStatusHistoryResponse {
+        - id : Long
+        - oldStatus : LoanStatus
+        - newStatus : LoanStatus
+        - changedByName : String
+        - reason : String
+        - changedAt : LocalDateTime
+    }
+
+    class LoanPortfolioResponse {
+        - loanNumber : String
+        - activeCount : long
+        - closedCount : long
+        - defaultedCount : long
+        - writtenOffCount : long
+        - totalDisbursedAmount : BigDecimal
+    }
+
+    class OverdueSummaryResponse {
+        - totalOverdueCount : long
+        - totalPenaltyOutstanding : BigDecimal
+        - oldestOverdueDays : int
+    }
+
+    class OverdueTrackerResponse {
+        - id : Long
+        - loanId : Long
+        - emiScheduleId : Long
+        - borrowerName : String
+        - borrowerEmail : String
+        - dueDate : LocalDate
+        - daysOverdue : Integer
+        - fixedPenaltyAmount : BigDecimal
+        - penaltyRate : BigDecimal
+        - penaltyCharge : BigDecimal
+        - penaltySettled : Boolean
+        - alertCount : Integer
+        - detectedAt : LocalDateTime
+        - resolvedAt : LocalDateTime
+    }
+
+    class MonthlyCollectionResponse {
+        - year : int
+        - month : int
+        - totalPaymentsCount : long
+        - totalAmountCollected : BigDecimal
+        - overdueCount : long
+        - totalPenaltyCharged : BigDecimal
+    }
+}
+
+' ─────────────────────────────────────────────
+' CONTROLLERS
+' ─────────────────────────────────────────────
+package "com.loanflow.controller" {
+
+    class AdminController {
+        - userService : UserService
+        - auditService : AuditService
+        + getAllUsers() : ResponseEntity<ApiResponse<List<UserResponse>>>
+        + deactivateUser(userId : Long) : ResponseEntity<ApiResponse<Void>>
+        + getAuditLogs(page : int, size : int, sortBy : String, direction : String) : ResponseEntity<ApiResponse<Page<AuditLogResponse>>>
+    }
+
+    class AuthController {
+        - authService : AuthService
+        + register(request : RegisterRequest) : ResponseEntity<ApiResponse<AuthResponse>>
+        + login(request : LoginRequest) : ResponseEntity<ApiResponse<AuthResponse>>
+    }
+
+    class BorrowerController {
+        - loanApplicationService : LoanApplicationService
+        - loanService : LoanService
+        - emiScheduleService : EmiScheduleService
+        - securityUtils : SecurityUtils
+        + applyLoan(request : LoanApplicationRequest) : ResponseEntity<ApiResponse<LoanApplicationResponse>>
+        + cancelApplication(applicationNumber : String) : ResponseEntity<ApiResponse<Void>>
+        + getMyApplications() : ResponseEntity<ApiResponse<List<LoanApplicationResponse>>>
+        + getMyLoans() : ResponseEntity<ApiResponse<List<LoanResponse>>>
+        + getEmiSchedule(loanNumber : String) : ResponseEntity<ApiResponse<List<EmiScheduleResponse>>>
+    }
+
+    class OfficerController {
+        - loanApplicationService : LoanApplicationService
+        - loanService : LoanService
+        - reportService : ReportService
+        - securityUtils : SecurityUtils
+        + getApplications() : ResponseEntity<ApiResponse<List<LoanApplicationResponse>>>
+        + decide(applicationNumber : String, request : LoanDecisionRequest) : ResponseEntity<ApiResponse<LoanResponse>>
+        + overdueSummary() : ResponseEntity<ApiResponse<OverdueSummaryResponse>>
+        + portfolio() : ResponseEntity<ApiResponse<LoanPortfolioResponse>>
+    }
+
+    class PaymentController {
+        - paymentService : PaymentService
+        - paymentRepository : PaymentRepository
+        - pdfGeneratorService : PdfGeneratorService
+        - securityUtils : SecurityUtils
+        + simulate(request : PaymentSimulationRequest) : ResponseEntity<ApiResponse<PaymentResponse>>
+        + getByLoan(loanNumber : String) : ResponseEntity<ApiResponse<List<PaymentResponse>>>
+        + downloadReceipt(receiptNumber : String) : ResponseEntity<byte[]>
+    }
+}
+
+' ─────────────────────────────────────────────
+' CONTROLLER → SERVICE DEPENDENCIES
+' ─────────────────────────────────────────────
+AdminController --> UserService
+AdminController --> AuditService
+AuthController --> AuthService
+BorrowerController --> LoanApplicationService
+BorrowerController --> LoanService
+BorrowerController --> EmiScheduleService
+OfficerController --> LoanApplicationService
+OfficerController --> LoanService
+OfficerController --> ReportService
+PaymentController --> PaymentService
+PaymentController --> PdfGeneratorService
+
+' ─────────────────────────────────────────────
+' CONTROLLER → DTO DEPENDENCIES
+' ─────────────────────────────────────────────
+AuthController ..> RegisterRequest : uses
+AuthController ..> LoginRequest : uses
+AuthController ..> AuthResponse : returns
+BorrowerController ..> LoanApplicationRequest : uses
+BorrowerController ..> LoanApplicationResponse : returns
+BorrowerController ..> LoanResponse : returns
+BorrowerController ..> EmiScheduleResponse : returns
+OfficerController ..> LoanDecisionRequest : uses
+OfficerController ..> LoanResponse : returns
+OfficerController ..> OverdueSummaryResponse : returns
+OfficerController ..> LoanPortfolioResponse : returns
+PaymentController ..> PaymentSimulationRequest : uses
+PaymentController ..> PaymentResponse : returns
+AdminController ..> UserResponse : returns
+AdminController ..> AuditLogResponse : returns
+
+' ─────────────────────────────────────────────
+' SERVICE INTERFACES (abbreviated refs)
+' ─────────────────────────────────────────────
+interface UserService
+interface AuditService
+interface AuthService
+interface LoanApplicationService
+interface LoanService
+interface EmiScheduleService
+interface ReportService
+interface PaymentService
+interface PdfGeneratorService
+
+' Repository ref for PaymentController
+interface PaymentRepository
+
+' SecurityUtils ref
+class SecurityUtils
+
+@enduml
