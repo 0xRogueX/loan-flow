@@ -22,6 +22,9 @@ public interface OverdueTrackerRepository extends JpaRepository<OverdueTracker, 
     // All unresolved overdue records for a loan
     List<OverdueTracker> findByLoanAndResolvedAtIsNull(Loan loan);
 
+    // All unresolved overdue tracker records across all loans
+    List<OverdueTracker> findByResolvedAtIsNull();
+
     // Count of currently active overdue EMIs.
     // resolvedAt IS NULL = payment has NOT been made yet.
     //Used by ReportService.getOverdueSummary().

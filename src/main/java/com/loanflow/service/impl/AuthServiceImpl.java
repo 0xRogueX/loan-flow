@@ -64,6 +64,7 @@ public class AuthServiceImpl implements AuthService {
                 a.setAccessLevel(req.getAccessLevel());
                 yield a;
             }
+            default -> throw new BusinessRuleException("Cannot register user with role: " + req.getRole());
         };
 
         // set common fields

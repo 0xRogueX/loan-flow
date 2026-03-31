@@ -39,6 +39,7 @@ public class AuditLog {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "entity_type", nullable = false, length = 50)
     private EntityType entityType;
 
@@ -61,6 +62,7 @@ public class AuditLog {
     @JoinColumn(name = "performed_by")
     private User performedBy;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "actor_role", nullable = false, length = 20)
     private Role actorRole;
 

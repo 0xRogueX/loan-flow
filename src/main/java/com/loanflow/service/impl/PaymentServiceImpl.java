@@ -53,7 +53,7 @@ public class PaymentServiceImpl implements PaymentService {
         EmiSchedule emi = emiScheduleRepository
                 .findById(request.getEmiScheduleId())
                 .orElseThrow(() -> new ResourceNotFoundException(
-                        "EMI Schedule ot found: " + request.getEmiScheduleId()));
+                        "EMI Schedule not found: " + request.getEmiScheduleId()));
 
         // Guard 1: EMI must not already be paid
         ValidationUtil.ensureEmiNotAlreadyPaid(emi);

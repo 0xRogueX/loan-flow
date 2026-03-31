@@ -26,7 +26,7 @@ public class ReportServiceImpl implements ReportService {
         return OverdueSummaryResponse.builder()
                 .totalOverdueCount(overdueCount)
                 .totalPenaltyOutstanding(
-                        overdueTrackerRepository.sumOutstandingPenalty(PenaltyStatus.UNPAID))
+                        overdueTrackerRepository.sumOutstandingPenalty(PenaltyStatus.APPLIED))
                 .oldestOverdueDays(
                         overdueTrackerRepository.findMaxDaysOverdue() != null
                                 ? overdueTrackerRepository.findMaxDaysOverdue() : 0)
