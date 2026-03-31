@@ -15,9 +15,6 @@ import java.time.LocalDate;
 @Setter
 @NoArgsConstructor
 public class Borrower extends User {
-//    @OneToOne(fetch = FetchType.LAZY)
-//    @JoinColumn(name = "user_id" , nullable = false)
-//    private User user;
 
     @NotBlank
     @Column(nullable = false, unique = true)
