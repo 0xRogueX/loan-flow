@@ -30,7 +30,6 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @Transactional
@@ -52,12 +51,12 @@ public class LoanServiceImpl implements LoanService {
     @Override
     // officer approve or reject loan application
     public LoanResponse processDecision(
-            UUID applicationId, LoanDecisionRequest request, User officer) {
+            String applicationNumber, LoanDecisionRequest request, User officer) {
 
         // 1. Fetch application and validate
         LoanApplication application = loanApplicationRepository
-                .findById(applicationId)
-                .orElseThrow(() -> new ResourceNotFoundException("Loan Application not found: " + applicationId));
+                .findByApplicationNumber(applicationNumber)
+                .orElseThrow(() -> new ResourceNotFoundException("Loan Application not found: " + applicationNumber));
 
         ValidationUtil.ensureApplicationIsReviewable(application);
 
@@ -124,13 +123,15 @@ public class LoanServiceImpl implements LoanService {
         loan.setDisbursedAt(LocalDateTime.now());
         loan.setOutstandingPrincipal(application.getRequestedAmount());
 
+        // FIX: calculate monthlyEmi BEFORE saving the loan to avoid NOT NULL constraint violation
+        EmiCalculationStrategy strategy = loanStrategyFactory.resolve(finalStrategy);
+        BigDecimal baseEmi = strategy.calculateBaseEmi(loan);
+        loan.setMonthlyEmi(baseEmi);
+
         Loan savedLoan = loanRepository.save(loan);
 
-        // calculate base emi using strategy
-        EmiCalculationStrategy strategy = loanStrategyFactory.resolve(finalStrategy);
-        BigDecimal baseEmi = emiScheduleService.generateSchedule(savedLoan, strategy);  // this baseEmi is new loan emi
-
-        savedLoan.setMonthlyEmi(baseEmi);
+        // generate and persist the full amortization schedule
+        emiScheduleService.generateSchedule(savedLoan, strategy);
 
         // calculate final dti for officer context
         BigDecimal dtiFinal = dtiCalculationService.calculateFinalDti(
@@ -145,8 +146,6 @@ public class LoanServiceImpl implements LoanService {
 //        }
 
         log.info("Loan {} - DTI_final: {}%", savedLoan.getId(), dtiFinal);
-
-        loanRepository.save(savedLoan);
 
         // audit for loan application
         auditService.log(AuditRequest.builder()
@@ -212,7 +211,7 @@ public class LoanServiceImpl implements LoanService {
     }
 
     @Override
-    public Loan findById(UUID loanId) {
+    public Loan findById(Long loanId) {
         return loanRepository.findById(loanId)
                 .orElseThrow(() -> new ResourceNotFoundException("Loan not found: " + loanId));
     }

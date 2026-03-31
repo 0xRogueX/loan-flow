@@ -10,10 +10,9 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.UUID;
 
 @Repository
-public interface EmiScheduleRepository extends JpaRepository<EmiSchedule, UUID> {
+public interface EmiScheduleRepository extends JpaRepository<EmiSchedule, Long> {
 
     // Amortization table for a loan
     List<EmiSchedule> findByLoanOrderByInstallmentNumberAsc(Loan loan);

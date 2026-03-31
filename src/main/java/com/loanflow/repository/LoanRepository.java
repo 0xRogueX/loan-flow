@@ -12,10 +12,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
-public interface LoanRepository extends JpaRepository<Loan, UUID> {
+public interface LoanRepository extends JpaRepository<Loan, Long> {
 
     @Query(value = "SELECT nextval('loan_number_seq')", nativeQuery = true)
     Long getNextLoanSequence();
@@ -44,7 +43,7 @@ public interface LoanRepository extends JpaRepository<Loan, UUID> {
             WHERE l.borrower.id = :borrowerId
             AND l.status = 'ACTIVE'
             """)
-    Optional<BigDecimal> sumActiveMonthlyEmi(@Param("borrowerId") UUID borrowerId);
+    Optional<BigDecimal> sumActiveMonthlyEmi(@Param("borrowerId") Long borrowerId);
      // Sum of monthly EMI across all ACTIVE loans for this borrower
      // Used by DtiCalculationService as Internal EMI
 }

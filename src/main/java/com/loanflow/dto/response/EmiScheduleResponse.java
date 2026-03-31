@@ -5,7 +5,6 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -15,7 +14,7 @@ import java.util.UUID;
 public class EmiScheduleResponse {
 
     /** Send this ID in PaymentSimulationRequest to pay this installment */
-    private UUID emiScheduleId;
+    private Long emiScheduleId;
 
     private Integer installmentNumber;
 

@@ -16,7 +16,6 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
-import java.util.UUID;
 
 @RestController
 @RequestMapping("/api/v1/admin")
@@ -40,7 +39,7 @@ public class AdminController {
 
     @PutMapping("/users/{userId}/deactivate")
     public ResponseEntity<ApiResponse<Void>> deactivateUser(
-            @PathVariable UUID userId) {
+            @PathVariable Long userId) {
 
         log.info("Admin requested to deactivate user with ID: {}", userId);
 

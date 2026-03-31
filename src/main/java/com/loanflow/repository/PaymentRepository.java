@@ -8,11 +8,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
-import java.util.UUID;
 import java.util.Optional;
 
 @Repository
-public interface PaymentRepository extends JpaRepository<Payment, UUID> {
+public interface PaymentRepository extends JpaRepository<Payment, Long> {
 
     @Query(value = "SELECT nextval('payment_receipt_seq')", nativeQuery = true)
     Long getNextReceiptSequence();

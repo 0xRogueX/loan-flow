@@ -9,7 +9,6 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(
@@ -31,20 +30,20 @@ import java.util.UUID;
 public class AuditLog {
 
     /**
-     * UUID strategy — consistent with all other entities in the project.
+     * IDENTITY strategy — consistent with all other entities in the project.
      * AuditLog does NOT extend BaseEntity because it has its own
      * lightweight auditing fields (createdAt only, no version or updatedAt).
      */
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "entity_type", nullable = false, length = 50)
     private EntityType entityType;
 
     @Column(name = "entity_id", nullable = false)
-    private UUID entityId;
+    private Long entityId;
 
     @Column(nullable = false, length = 50)
     private String action;

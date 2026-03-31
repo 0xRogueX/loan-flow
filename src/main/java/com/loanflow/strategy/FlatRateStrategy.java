@@ -16,6 +16,16 @@ import java.util.List;
 public class FlatRateStrategy implements EmiCalculationStrategy {
 
     @Override
+    public BigDecimal calculateBaseEmi(Loan loan) {
+        BigDecimal monthlyRate = EmiCalculationUtil.calculateMonthlyRate(loan.getInterestRatePerAnnum());
+        BigDecimal monthlyPrincipal = EmiCalculationUtil.calculateFlatMonthlyPrincipal(
+                loan.getApprovedAmount(), loan.getTenureMonths());
+        BigDecimal monthlyInterest = EmiCalculationUtil.calculateFlatMonthlyInterest(
+                loan.getApprovedAmount(), monthlyRate);
+        return MoneyUtil.roundHalfUp(monthlyPrincipal.add(monthlyInterest));
+    }
+
+    @Override
     public List<EmiSchedule> generateEmiSchedule(Loan loan) {
 
         List<EmiSchedule> schedule = new ArrayList<>();

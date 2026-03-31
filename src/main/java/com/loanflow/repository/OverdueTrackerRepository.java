@@ -12,10 +12,9 @@ import org.springframework.stereotype.Repository;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
-public interface OverdueTrackerRepository extends JpaRepository<OverdueTracker, UUID> {
+public interface OverdueTrackerRepository extends JpaRepository<OverdueTracker, Long> {
 
     Optional<OverdueTracker> findByEmiSchedule(EmiSchedule emiSchedule);
 

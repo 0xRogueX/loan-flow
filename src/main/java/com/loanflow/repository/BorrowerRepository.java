@@ -8,10 +8,9 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
-public interface BorrowerRepository extends JpaRepository<Borrower, UUID> {
+public interface BorrowerRepository extends JpaRepository<Borrower, Long> {
 
     Optional<Borrower> findByEmail(String email);
 
@@ -22,7 +21,7 @@ public interface BorrowerRepository extends JpaRepository<Borrower, UUID> {
             WHERE l.borrower.id = :id
             AND l.status = 'ACTIVE'
             """)
-     Optional<BigDecimal> sumActiveMonthlyEmi(@Param("id") UUID borrowerId);
+     Optional<BigDecimal> sumActiveMonthlyEmi(@Param("id") Long borrowerId);
      // Sum of monthly EMI across all ACTIVE loans for this borrower
      // Used by DtiCalculationService as Internal EMI
 

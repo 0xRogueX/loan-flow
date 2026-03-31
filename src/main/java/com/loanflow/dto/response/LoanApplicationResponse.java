@@ -5,7 +5,6 @@ import com.loanflow.enums.LoanStrategy;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -14,7 +13,7 @@ import java.util.UUID;
 @Builder
 public class LoanApplicationResponse {
 
-    private UUID id;
+    private Long id;
 
     private String applicationNumber;
 

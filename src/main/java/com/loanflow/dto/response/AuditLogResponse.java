@@ -4,7 +4,6 @@ import com.loanflow.enums.EntityType;
 import com.loanflow.enums.Role;
 import lombok.*;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Getter
 @Setter
@@ -13,9 +12,9 @@ import java.util.UUID;
 @Builder
 public class AuditLogResponse {
 
-    private UUID id;
+    private Long id;
     private EntityType entityType;
-    private UUID entityId;
+    private Long entityId;
     private String action;
     private String oldStatus;
     private String newStatus;

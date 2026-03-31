@@ -6,12 +6,11 @@ import com.loanflow.entity.Loan;
 import com.loanflow.entity.user.User;
 
 import java.util.List;
-import java.util.UUID;
 
 public interface LoanService {
 
     // Officer processes loan application (approve/reject)
-    LoanResponse processDecision(UUID applicationId,
+    LoanResponse processDecision(String applicationNumber,
                                  LoanDecisionRequest request,
                                  User officer);
 
@@ -22,7 +21,7 @@ public interface LoanService {
     List<LoanResponse> getMyLoans(User borrower);
 
     // Find loan by ID
-    Loan findById(UUID loanId);
+    Loan findById(Long loanId);
 
     Loan findByLoanNumber(String loanNumber);
 }
