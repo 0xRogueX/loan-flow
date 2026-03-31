@@ -1,0 +1,430 @@
+@startuml Strategy, Security, Integration, Events and Scheduling
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 11
+skinparam packageFontSize 12
+skinparam linetype ortho
+hide empty members
+
+' ─────────────────────────────────────────────
+' STRATEGY PATTERN
+' ─────────────────────────────────────────────
+package "com.loanflow.strategy" {
+
+    interface EmiCalculationStrategy {
+        + generateEmiSchedule(loan : Loan) : List<EmiSchedule>
+        + calculateBaseEmi(loan : Loan) : BigDecimal
+    }
+
+    class FlatRateStrategy {
+        + calculateBaseEmi(loan : Loan) : BigDecimal
+        + generateEmiSchedule(loan : Loan) : List<EmiSchedule>
+    }
+
+    class ReducingBalanceStrategy {
+        + calculateBaseEmi(loan : Loan) : BigDecimal
+        + generateEmiSchedule(loan : Loan) : List<EmiSchedule>
+    }
+
+    class StepUpEmiStrategy {
+        + calculateBaseEmi(loan : Loan) : BigDecimal
+        + generateEmiSchedule(loan : Loan) : List<EmiSchedule>
+    }
+
+    class LoanStrategyFactory {
+        - flatRateStrategy : FlatRateStrategy
+        - reducingBalanceStrategy : ReducingBalanceStrategy
+        - stepUpEmiStrategy : StepUpEmiStrategy
+        + resolve(strategy : LoanStrategy) : EmiCalculationStrategy
+    }
+}
+
+EmiCalculationStrategy <|.. FlatRateStrategy
+EmiCalculationStrategy <|.. ReducingBalanceStrategy
+EmiCalculationStrategy <|.. StepUpEmiStrategy
+
+LoanStrategyFactory *-- FlatRateStrategy
+LoanStrategyFactory *-- ReducingBalanceStrategy
+LoanStrategyFactory *-- StepUpEmiStrategy
+LoanStrategyFactory ..> EmiCalculationStrategy : resolves
+
+' ─────────────────────────────────────────────
+' SECURITY
+' ─────────────────────────────────────────────
+package "com.loanflow.security" {
+
+    class CustomUserDetailsService {
+        - userRepository : UserRepository
+        + loadUserByUsername(email : String) : UserDetails
+    }
+
+    class JwtAuthenticationEntryPoint {
+        + commence(request : HttpServletRequest, response : HttpServletResponse, authException : AuthenticationException) : void
+    }
+
+    class JwtAuthenticationFilter {
+        - jwtTokenProvider : JwtTokenProvider
+        - userDetailsService : CustomUserDetailsService
+        # doFilterInternal(request : HttpServletRequest, response : HttpServletResponse, filterChain : FilterChain) : void
+        - getTokenFromRequest(request : HttpServletRequest) : String
+    }
+
+    class JwtTokenProvider {
+        - jwtSecretKey : String
+        - jwtExpirationDate : long
+        + generateToken(authentication : Authentication) : String
+        + generateToken(user : User) : String
+        + getUsername(token : String) : String
+        + validateToken(token : String) : boolean
+        - key() : SecretKey
+    }
+
+    class SecurityUtils {
+        - userRepository : UserRepository
+        + getCurrentUser() : User
+        + getCurrentUserId() : Long
+        + isOwner(resourceOwnerId : Long) : boolean
+        + hasRole(roleName : String) : boolean
+    }
+}
+
+JwtAuthenticationFilter --> JwtTokenProvider
+JwtAuthenticationFilter --> CustomUserDetailsService
+
+' Spring Security inheritance
+class "OncePerRequestFilter" as OncePerRequestFilter
+class "AuthenticationEntryPoint" as AuthenticationEntryPoint
+
+OncePerRequestFilter <|-- JwtAuthenticationFilter
+AuthenticationEntryPoint <|.. JwtAuthenticationEntryPoint
+
+class "UserDetailsService" as UserDetailsService
+UserDetailsService <|.. CustomUserDetailsService
+
+' ─────────────────────────────────────────────
+' INTEGRATION
+' ─────────────────────────────────────────────
+package "com.loanflow.integration" {
+
+    interface CreditBureauService {
+        + fetchExternalEmi(panNumber : String) : ExternalDebtResult
+    }
+
+    class CreditBureauServiceImpl {
+        - client : CreditBureauClient
+        + fetchExternalEmi(panNumber : String) : ExternalDebtResult
+    }
+
+    class CreditBureauClient {
+        - restTemplate : RestTemplate
+        - properties : CreditBureauProperties
+        + fetchReport(panNumber : String) : CreditBureauResponse
+        - getHeader() : HttpHeaders
+    }
+
+    class CreditBureauProperties {
+        - baseUrl : String
+        - timeoutMs : int
+    }
+
+    class ExternalDebtResult <<record>> {
+        + externalMonthlyEmi : BigDecimal
+        + bureauStatus : String
+    }
+}
+
+package "com.loanflow.integration.dto" {
+
+    class CreditBureauRequest {
+        - panNumber : String
+    }
+
+    class CreditBureauResponse {
+        - panNumber : String
+        - totalMonthlyEmi : BigDecimal
+        - found : boolean
+        + {static} unavailable(panNumber : String) : CreditBureauResponse
+    }
+}
+
+CreditBureauService <|.. CreditBureauServiceImpl
+CreditBureauServiceImpl *-- CreditBureauClient
+CreditBureauServiceImpl +-- ExternalDebtResult
+CreditBureauClient --> CreditBureauProperties
+CreditBureauClient ..> CreditBureauRequest : sends
+CreditBureauClient ..> CreditBureauResponse : receives
+
+' ─────────────────────────────────────────────
+' DOMAIN EVENTS
+' ─────────────────────────────────────────────
+package "com.loanflow.event" {
+
+    class LoanApplicationSubmittedEvent {
+        - application : LoanApplication
+    }
+
+    class LoanDecisionEvent {
+        - loan : Loan
+        - application : LoanApplication
+        - decision : ApplicationStatus
+        - rejectionReason : String
+    }
+
+    class LoanClosedEvent {
+        - loan : Loan
+    }
+
+    class PaymentReceivedEvent {
+        - payment : Payment
+        - emiSchedule : EmiSchedule
+    }
+
+    class PaymentReminderEvent {
+        - emiSchedule : EmiSchedule
+    }
+
+    class OverdueAlertEvent {
+        - tracker : OverdueTracker
+    }
+}
+
+' ─────────────────────────────────────────────
+' EVENT LISTENER
+' ─────────────────────────────────────────────
+package "com.loanflow.listener" {
+
+    class NotificationEventListener {
+        - notificationService : NotificationService
+        + handleApplicationSubmitted(event : LoanApplicationSubmittedEvent) : void
+        + handleLoanDecision(event : LoanDecisionEvent) : void
+        + handlePaymentReceived(event : PaymentReceivedEvent) : void
+        + handlePaymentReminder(event : PaymentReminderEvent) : void
+        + handleOverdueAlert(event : OverdueAlertEvent) : void
+        + handleLoanClosed(event : LoanClosedEvent) : void
+    }
+}
+
+NotificationEventListener ..> LoanApplicationSubmittedEvent : listens
+NotificationEventListener ..> LoanDecisionEvent : listens
+NotificationEventListener ..> PaymentReceivedEvent : listens
+NotificationEventListener ..> PaymentReminderEvent : listens
+NotificationEventListener ..> OverdueAlertEvent : listens
+NotificationEventListener ..> LoanClosedEvent : listens
+NotificationEventListener --> NotificationService
+
+' ─────────────────────────────────────────────
+' SCHEDULERS
+' ─────────────────────────────────────────────
+package "com.loanflow.scheduler" {
+
+    class OverdueScheduler {
+        - overdueMonitorService : OverdueMonitorService
+        + runOverdueScan() : void
+        + runWrittenOffScan() : void
+    }
+
+    class PaymentReminderScheduler {
+        - emiScheduleRepository : EmiScheduleRepository
+        - eventPublisher : ApplicationEventPublisher
+        + runPaymentReminders() : void
+    }
+
+    class NotificationRetryScheduler {
+        - notificationRepository : NotificationRepository
+        - notificationService : NotificationService
+        + retryFailedNotifications() : void
+    }
+}
+
+OverdueScheduler --> OverdueMonitorService
+PaymentReminderScheduler ..> PaymentReminderEvent : publishes
+NotificationRetryScheduler --> NotificationService
+
+' ─────────────────────────────────────────────
+' MAPPERS
+' ─────────────────────────────────────────────
+package "com.loanflow.mapper" {
+
+    interface AuditLogMapper {
+        + toResponse(auditLog : AuditLog) : AuditLogResponse
+        + toResponseList(logs : List<AuditLog>) : List<AuditLogResponse>
+    }
+
+    interface EmiScheduleMapper {
+        + toResponse(emiSchedule : EmiSchedule) : EmiScheduleResponse
+        + toResponseList(schedules : List<EmiSchedule>) : List<EmiScheduleResponse>
+    }
+
+    interface LoanApplicationMapper {
+        + toResponse(application : LoanApplication) : LoanApplicationResponse
+        + toResponseList(applications : List<LoanApplication>) : List<LoanApplicationResponse>
+    }
+
+    interface LoanMapper {
+        + toResponse(loan : Loan) : LoanResponse
+        + toResponseList(loans : List<Loan>) : List<LoanResponse>
+    }
+
+    interface LoanStatusHistoryMapper {
+        + toResponse(history : LoanStatusHistory) : LoanStatusHistoryResponse
+        + toResponseList(histories : List<LoanStatusHistory>) : List<LoanStatusHistoryResponse>
+    }
+
+    interface OverdueTrackerMapper {
+        + toResponse(tracker : OverdueTracker) : OverdueTrackerResponse
+        + toResponseList(trackers : List<OverdueTracker>) : List<OverdueTrackerResponse>
+    }
+
+    interface PaymentMapper {
+        + toResponse(payment : Payment) : PaymentResponse
+        + toResponseList(payments : List<Payment>) : List<PaymentResponse>
+    }
+
+    interface UserMapper {
+        + toResponse(user : User) : UserResponse
+        + toResponseList(users : List<User>) : List<UserResponse>
+    }
+}
+
+' ─────────────────────────────────────────────
+' EXCEPTIONS
+' ─────────────────────────────────────────────
+package "com.loanflow.exception" {
+
+    abstract class ApplicationException {
+        - errorCode : String
+        - status : HttpStatus
+        + ApplicationException(message : String, errorCode : String, status : HttpStatus)
+    }
+
+    class BusinessRuleException {
+        + BusinessRuleException(message : String)
+    }
+
+    class CreditBureauException {
+        + CreditBureauException(message : String)
+    }
+
+    class InvalidStatusTransitionException {
+        + InvalidStatusTransitionException(message : String)
+    }
+
+    class LoanLimitExceededException {
+        + LoanLimitExceededException(message : String)
+    }
+
+    class ResourceNotFoundException {
+        + ResourceNotFoundException(message : String)
+    }
+
+    class StrategyNotFoundException {
+        + StrategyNotFoundException(message : String)
+    }
+
+    class UnauthorizedAccessException {
+        + UnauthorizedAccessException(message : String)
+    }
+
+    class ErrorResponse {
+        - status : int
+        - message : String
+        - path : String
+        - timestamp : Instant
+        - errorCode : String
+    }
+
+    class GlobalExceptionHandler {
+        + handleApplicationException(ex : ApplicationException, request : HttpServletRequest) : ResponseEntity<ErrorResponse>
+        + handleValidationException(ex : MethodArgumentNotValidException, request : HttpServletRequest) : ResponseEntity<ErrorResponse>
+        + handleGlobalException(ex : Exception, request : HttpServletRequest) : ResponseEntity<ErrorResponse>
+    }
+}
+
+ApplicationException <|-- BusinessRuleException
+ApplicationException <|-- CreditBureauException
+ApplicationException <|-- InvalidStatusTransitionException
+ApplicationException <|-- LoanLimitExceededException
+ApplicationException <|-- ResourceNotFoundException
+ApplicationException <|-- StrategyNotFoundException
+ApplicationException <|-- UnauthorizedAccessException
+
+GlobalExceptionHandler ..> ApplicationException : handles
+GlobalExceptionHandler ..> ErrorResponse : returns
+
+' ─────────────────────────────────────────────
+' UTILITIES
+' ─────────────────────────────────────────────
+package "com.loanflow.util" {
+
+    class DateUtil {
+        + {static} emiDueDate(disbursedOn : LocalDate, installmentNumber : int) : LocalDate
+        + {static} daysFromToday(days : int) : LocalDate
+    }
+
+    class EmiCalculationUtil {
+        + {static} calculateMonthlyRate(annualRate : BigDecimal) : BigDecimal
+        + {static} calculateReducingBalanceEmi(principal : BigDecimal, monthlyRate : BigDecimal, tenureMonths : int) : BigDecimal
+        + {static} calculateFlatMonthlyPrincipal(principal : BigDecimal, tenureMonths : int) : BigDecimal
+        + {static} calculateFlatMonthlyInterest(principal : BigDecimal, monthlyRate : BigDecimal) : BigDecimal
+    }
+
+    class MoneyUtil {
+        + {static} roundHalfUp(value : BigDecimal) : BigDecimal
+        + {static} adjustFinalEmi(principalPlusBalance : BigDecimal, interest : BigDecimal) : BigDecimal
+    }
+
+    class ValidationUtil {
+        + {static} ensureApplicationIsCancellable(application : LoanApplication) : void
+        + {static} ensureApplicationIsReviewable(application : LoanApplication) : void
+        + {static} ensureEmiNotAlreadyPaid(emi : EmiSchedule) : void
+        + {static} ensureLoanIsActive(loan : Loan) : void
+    }
+}
+
+' ─────────────────────────────────────────────
+' CONFIG
+' ─────────────────────────────────────────────
+package "com.loanflow.config" {
+
+    class ApplicationConfig {
+        - userRepository : UserRepository
+        + userDetailsService() : UserDetailsService
+        + passwordEncoder() : PasswordEncoder
+        + authenticationProvider() : AuthenticationProvider
+        + authenticationManager(config : AuthenticationConfiguration) : AuthenticationManager
+        + restTemplate() : RestTemplate
+    }
+
+    class AsyncConfig {
+        + taskExecutor() : Executor
+    }
+
+    class JpaAuditingConfig {
+        + auditorAware() : AuditorAware<String>
+    }
+
+    class SchedulingConfig {
+    }
+
+    class SecurityConfig {
+        - jwtAuthFilter : JwtAuthenticationFilter
+        - authenticationProvider : AuthenticationProvider
+        - jwtAuthenticationEntryPoint : JwtAuthenticationEntryPoint
+        + securityFilterChain(http : HttpSecurity) : SecurityFilterChain
+    }
+}
+
+SecurityConfig --> JwtAuthenticationFilter
+SecurityConfig --> JwtAuthenticationEntryPoint
+ApplicationConfig --> SecurityUtils
+
+' Service ref for NotificationService
+interface NotificationService
+interface OverdueMonitorService
+
+' Repository refs
+interface UserRepository
+interface NotificationRepository
+interface EmiScheduleRepository
+
+@enduml

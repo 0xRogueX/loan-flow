@@ -1,0 +1,348 @@
+@startuml Domain Model - Entities and Enums
+
+skinparam classAttributeIconSize 0
+skinparam classFontSize 12
+skinparam packageFontSize 13
+skinparam linetype ortho
+hide empty members
+
+' ─────────────────────────────────────────────
+' ENUMS
+' ─────────────────────────────────────────────
+package "com.loanflow.enums" {
+
+    enum Role {
+        ADMIN
+        BORROWER
+        LOAN_OFFICER
+        SYSTEM
+    }
+
+    enum AdminAccessLevel {
+        FULL_CONTROL
+        READ_ONLY
+        LOAN_APPROVE
+    }
+
+    enum ApplicationStatus {
+        PENDING
+        UNDER_REVIEW
+        APPROVED
+        REJECTED
+        CANCELLED
+    }
+
+    enum BureauStatus {
+        AVAILABLE
+        FETCHED
+        UNAVAILABLE
+    }
+
+    enum EmiStatus {
+        PENDING
+        PAID
+        OVERDUE
+    }
+
+    enum EntityType {
+        ADMIN_PROFILE
+        BORROWER_PROFILE
+        LOAN_OFFICER_PROFILE
+        USER
+        ADDRESS
+        LOAN_APPLICATION
+        LOAN
+        EMI_SCHEDULE
+        PAYMENT
+        OVERDUE_TRACKER
+        NOTIFICATION
+    }
+
+    enum LoanStatus {
+        ACTIVE
+        CLOSED
+        DEFAULTED
+        WRITTEN_OFF
+    }
+
+    enum LoanStrategy {
+        FLAT_RATE_LOAN
+        REDUCING_BALANCE_LOAN
+        STEP_UP_EMI_LOAN
+    }
+
+    enum NotificationEventType {
+        APPLICATION_SUBMITTED
+        LOAN_APPROVED
+        LOAN_REJECTED
+        EMI_PAID
+        PAYMENT_REMINDER
+        OVERDUE_ALERT
+        LOAN_CLOSED
+        PENALTY_APPLIED
+    }
+
+    enum NotificationStatus {
+        QUEUED
+        SENT
+        FAILED
+    }
+
+    enum NotificationType {
+        EMAIL
+    }
+
+    enum PaymentMode {
+        SIMULATION
+    }
+
+    enum PenaltyStatus {
+        APPLIED
+        SETTLED
+        UNPAID
+    }
+}
+
+' ─────────────────────────────────────────────
+' BASE ENTITY
+' ─────────────────────────────────────────────
+package "com.loanflow.entity.base" {
+
+    abstract class BaseEntity {
+        # id : Long
+        # createdAt : LocalDateTime
+        # createdBy : String
+        # updatedAt : LocalDateTime
+        # updatedBy : String
+        # version : Long
+    }
+}
+
+' ─────────────────────────────────────────────
+' USER HIERARCHY
+' ─────────────────────────────────────────────
+package "com.loanflow.entity.user" {
+
+    class User {
+        # name : String
+        # email : String
+        # password : String
+        # phone : String
+        # role : Role
+        # isActive : boolean
+        # isDeleted : boolean
+        # deletedAt : LocalDateTime
+        # lastLoginAt : LocalDateTime
+        + prePersist() : void
+    }
+
+    class Borrower {
+        - panNumber : String
+        - dateOfBirth : LocalDate
+        - occupation : String
+        - monthlyIncome : BigDecimal
+        - address : Address
+    }
+
+    class LoanOfficer {
+        - employeeId : String
+        - designation : String
+        - loansApprovedCount : Integer
+        - loansRejectedCount : Integer
+    }
+
+    class Admin {
+        - accessLevel : AdminAccessLevel
+        - lastActionAt : LocalDateTime
+    }
+}
+
+' ─────────────────────────────────────────────
+' CORE ENTITIES
+' ─────────────────────────────────────────────
+package "com.loanflow.entity" {
+
+    class Address {
+        - flatNo : String
+        - area : String
+        - city : String
+        - state : String
+        - country : String
+        - pincode : String
+        - borrower : Borrower
+    }
+
+    class LoanApplication {
+        - applicationNumber : String
+        - borrower : User
+        - reviewedBy : User
+        - requestedAmount : BigDecimal
+        - tenureMonths : Integer
+        - monthlyIncome : BigDecimal
+        - bureauStatus : BureauStatus
+        - existingMonthlyEmi : BigDecimal
+        - calculatedDti : BigDecimal
+        - suggestedStrategy : LoanStrategy
+        - finalStrategy : LoanStrategy
+        - status : ApplicationStatus
+        - rejectionReason : String
+        - reviewedAt : LocalDateTime
+    }
+
+    class Loan {
+        - loanNumber : String
+        - application : LoanApplication
+        - borrower : User
+        - approvedBy : User
+        - approvedAmount : BigDecimal
+        - interestRatePerAnnum : BigDecimal
+        - tenureMonths : Integer
+        - strategy : LoanStrategy
+        - monthlyEmi : BigDecimal
+        - outstandingPrincipal : BigDecimal
+        - overDueCount : Integer
+        - status : LoanStatus
+        - disbursedAt : LocalDateTime
+        - closedAt : LocalDateTime
+    }
+
+    class EmiSchedule {
+        - loan : Loan
+        - installmentNumber : Integer
+        - dueDate : LocalDate
+        - principalAmount : BigDecimal
+        - interestAmount : BigDecimal
+        - totalEmiAmount : BigDecimal
+        - remainingBalance : BigDecimal
+        - status : EmiStatus
+        - paidAt : LocalDateTime
+    }
+
+    class LoanStatusHistory {
+        - loan : Loan
+        - oldStatus : LoanStatus
+        - newStatus : LoanStatus
+        - changedBy : User
+        - reason : String
+        - changedAt : LocalDateTime
+    }
+
+    class AuditLog {
+        - id : Long
+        - entityType : EntityType
+        - entityId : Long
+        - action : String
+        - oldStatus : String
+        - newStatus : String
+        - changeDetailJson : String
+        - performedBy : User
+        - actorRole : Role
+        - remarks : String
+        - createdAt : LocalDateTime
+    }
+
+    class Notification {
+        - recipient : User
+        - loan : Loan
+        - destination : String
+        - eventType : NotificationEventType
+        - status : NotificationStatus
+        - subject : String
+        - content : String
+        - retryCount : Integer
+        - failureReason : String
+        - scheduledAt : LocalDateTime
+        - sentAt : LocalDateTime
+    }
+
+    class OverdueTracker {
+        - emiSchedule : EmiSchedule
+        - loan : Loan
+        - borrower : User
+        - dueDate : LocalDate
+        - fixedPenaltyAmount : BigDecimal
+        - penaltyRate : BigDecimal
+        - penaltyCharge : BigDecimal
+        - penaltyStatus : PenaltyStatus
+        - daysOverdue : Integer
+        - alertCount : Integer
+        - detectedAt : LocalDateTime
+        - lastAlertAt : LocalDateTime
+        - resolvedAt : LocalDateTime
+    }
+
+    class Payment {
+        - receiptNumber : String
+        - emiSchedule : EmiSchedule
+        - loan : Loan
+        - borrower : User
+        - paidAmount : BigDecimal
+        - paymentMode : PaymentMode
+        - paidAt : LocalDateTime
+    }
+}
+
+' ─────────────────────────────────────────────
+' INHERITANCE
+' ─────────────────────────────────────────────
+BaseEntity <|-- User
+BaseEntity <|-- Address
+BaseEntity <|-- LoanApplication
+BaseEntity <|-- Loan
+BaseEntity <|-- EmiSchedule
+BaseEntity <|-- LoanStatusHistory
+BaseEntity <|-- Notification
+BaseEntity <|-- OverdueTracker
+BaseEntity <|-- Payment
+
+User <|-- Borrower
+User <|-- LoanOfficer
+User <|-- Admin
+
+' ─────────────────────────────────────────────
+' ASSOCIATIONS & COMPOSITIONS
+' ─────────────────────────────────────────────
+Borrower *-- Address : has
+
+LoanApplication --> User : borrower
+LoanApplication --> User : reviewedBy
+LoanApplication --> BureauStatus
+LoanApplication --> ApplicationStatus
+LoanApplication --> LoanStrategy
+
+Loan --> LoanApplication : application
+Loan --> User : borrower
+Loan --> User : approvedBy
+Loan --> LoanStatus
+Loan --> LoanStrategy
+
+EmiSchedule --> Loan
+EmiSchedule --> EmiStatus
+
+LoanStatusHistory --> Loan
+LoanStatusHistory --> User : changedBy
+LoanStatusHistory --> LoanStatus
+
+AuditLog --> User : performedBy
+AuditLog --> EntityType
+AuditLog --> Role
+
+Notification --> User : recipient
+Notification --> Loan
+Notification --> NotificationEventType
+Notification --> NotificationStatus
+
+OverdueTracker --> EmiSchedule
+OverdueTracker --> Loan
+OverdueTracker --> User : borrower
+OverdueTracker --> PenaltyStatus
+
+Payment --> EmiSchedule
+Payment --> Loan
+Payment --> User : borrower
+Payment --> PaymentMode
+
+User --> Role
+Admin --> AdminAccessLevel
+
+@enduml
