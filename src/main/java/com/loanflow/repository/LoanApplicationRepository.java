@@ -10,9 +10,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import java.util.List;
 import java.util.Collection;
-import java.util.UUID;
 
-public interface LoanApplicationRepository extends JpaRepository<LoanApplication , UUID> {
+public interface LoanApplicationRepository extends JpaRepository<LoanApplication , Long> {
 
     @Query(value = "SELECT nextval('application_number_seq')", nativeQuery = true)
     Long getNextApplicationSequence();

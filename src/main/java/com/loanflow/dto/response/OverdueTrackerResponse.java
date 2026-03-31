@@ -4,16 +4,15 @@ import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class OverdueTrackerResponse {
 
-    private UUID id;
+    private Long id;
 
-    private UUID loanId;
+    private Long loanId;
 
-    private UUID emiScheduleId;
+    private Long emiScheduleId;
 
     /** Borrower full name — denormalised for officer convenience */
     private String borrowerName;

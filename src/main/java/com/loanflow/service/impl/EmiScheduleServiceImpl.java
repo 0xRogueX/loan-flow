@@ -16,7 +16,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -61,7 +60,7 @@ public class EmiScheduleServiceImpl implements EmiScheduleService {
      */
     @Override
     @Transactional(readOnly = true)
-    public List<EmiScheduleResponse> getScheduleByLoan(UUID loanId) {
+    public List<EmiScheduleResponse> getScheduleByLoan(Long loanId) {
 
         Loan loan = loanRepository.findById(loanId)
                 .orElseThrow(() -> new ResourceNotFoundException(

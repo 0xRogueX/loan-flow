@@ -26,6 +26,13 @@ import java.util.List;
 public class StepUpEmiStrategy implements EmiCalculationStrategy {
 
     @Override
+    public BigDecimal calculateBaseEmi(Loan loan) {
+        BigDecimal monthlyRate = EmiCalculationUtil.calculateMonthlyRate(loan.getInterestRatePerAnnum());
+        return EmiCalculationUtil.calculateReducingBalanceEmi(
+                loan.getApprovedAmount(), monthlyRate, loan.getTenureMonths());
+    }
+
+    @Override
     public List<EmiSchedule> generateEmiSchedule(Loan loan) {
 
         List<EmiSchedule> schedule = new ArrayList<>();

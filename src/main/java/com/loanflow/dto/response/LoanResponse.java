@@ -5,16 +5,15 @@ import com.loanflow.enums.LoanStrategy;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class LoanResponse {
 
-    private UUID id;
+    private Long id;
 
     private String loanNumber;
 
-    private UUID applicationId;
+    private Long applicationId;
 
     private BigDecimal approvedAmount;
 

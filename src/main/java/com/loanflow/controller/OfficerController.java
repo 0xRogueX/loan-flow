@@ -34,14 +34,14 @@ public class OfficerController {
     }
 
 
-    @PutMapping("/approve/{applicationId}")
+    @PutMapping("/approve/{applicationNumber}")
     @PreAuthorize("hasRole('LOAN_OFFICER')")
     public ResponseEntity<ApiResponse<LoanResponse>> decide(
-            @PathVariable UUID applicationId,
+            @PathVariable String applicationNumber,
             @Valid @RequestBody LoanDecisionRequest request) {
         User officer = securityUtils.getCurrentUser();
 
-        LoanResponse result = loanService.processDecision(applicationId, request, officer);
+        LoanResponse result = loanService.processDecision(applicationNumber, request, officer);
         String message = result != null ? "Loan application approved." : "Loan application rejected.";
 
         return ResponseEntity.ok(ApiResponse.ok(message, result));

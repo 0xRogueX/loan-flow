@@ -12,7 +12,6 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 
-import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -41,7 +40,7 @@ public class SecurityUtils {
     }
 
     // Used to prevent Horizontal Privilege Escalation (IDOR attacks) - Insecure Direct Object Reference
-    public boolean isOwner(UUID resourceOwnerId) {
+    public boolean isOwner(Long resourceOwnerId) {
         if (resourceOwnerId == null) {
             return false;
         }

@@ -22,6 +22,14 @@ import java.util.List;
 
 @Component
 public class ReducingBalanceStrategy implements EmiCalculationStrategy {
+
+    @Override
+    public BigDecimal calculateBaseEmi(Loan loan) {
+        BigDecimal monthlyRate = EmiCalculationUtil.calculateMonthlyRate(loan.getInterestRatePerAnnum());
+        return EmiCalculationUtil.calculateReducingBalanceEmi(
+                loan.getApprovedAmount(), monthlyRate, loan.getTenureMonths());
+    }
+
     @Override
     public List<EmiSchedule> generateEmiSchedule(Loan loan) {
 

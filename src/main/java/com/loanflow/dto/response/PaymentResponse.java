@@ -4,16 +4,15 @@ import com.loanflow.enums.PaymentMode;
 import lombok.*;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class PaymentResponse {
 
-    private UUID id;
+    private Long id;
 
     private String receiptNumber; // <=== Added this
 
-    private UUID loanId;
+    private Long loanId;
 
     private Integer installmentNumber;
 

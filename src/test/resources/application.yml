@@ -19,6 +19,10 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.H2Dialect
 
+  sql:
+    init:
+      mode: never
+
   mail:
     host: localhost
     port: 25
@@ -34,3 +38,7 @@ spring:
 jwt:
   secret: dGVzdC1zZWNyZXQta2V5LWZvci1sb2FuLWZsb3ctanVuaXQtdGVzdGluZy1taW5pbXVtLTI1Ni1iaXRzLWtleQ==
   expiration-ms: 86400000
+
+credit-bureau:
+  base-url: http://localhost:9999/credit
+  timeout-ms: 3000

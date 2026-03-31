@@ -6,14 +6,12 @@ import com.loanflow.enums.Role;
 import lombok.Builder;
 import lombok.Getter;
 
-import java.util.UUID;
-
 @Getter
 @Builder
 public class AuditRequest {
 
     private final EntityType entityType;   // "LOAN_APPLICATION", "LOAN", "EMI_SCHEDULE"
-    private final UUID entityId;
+    private final Long entityId;
     private final String action;       // "SUBMITTED", "APPROVED", "MARKED_PAID"
     private final String oldStatus;    // null for creation events
     private final String newStatus;
