@@ -22,6 +22,11 @@ spring:
         format_sql: true
         dialect: org.hibernate.dialect.PostgreSQLDialect
 
+  #    
+  sql:
+    init:
+      mode: always
+
   # EMAIL CONFIGURATION (For Notifications)
   mail:
     host: ${MAIL_HOST}
@@ -36,9 +41,9 @@ spring:
             enable: true
 
 ## EXTERNAL API INTEGRATION
-#credit-bureau:
-#  base-url: ${CREDIT_BASE_URL}
-#  timeout-ms: ${CREDIT_TIMEOUT}
+credit-bureau:
+  base-url: ${CREDIT_BASE_URL}
+  timeout-ms: ${CREDIT_TIMEOUT}
 
 jwt:
   secret: ${JWT_SECRET}

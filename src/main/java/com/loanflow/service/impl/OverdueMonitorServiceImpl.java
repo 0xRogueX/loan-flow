@@ -11,6 +11,7 @@ import com.loanflow.repository.EmiScheduleRepository;
 import com.loanflow.repository.LoanRepository;
 import com.loanflow.repository.OverdueTrackerRepository;
 import com.loanflow.service.AuditService;
+import com.loanflow.service.LoanStatusTransitionService;
 import com.loanflow.service.OverdueMonitorService;
 import com.loanflow.util.DateUtil;
 import com.loanflow.util.MoneyUtil;
@@ -33,7 +34,7 @@ public class OverdueMonitorServiceImpl implements OverdueMonitorService {
     private final EmiScheduleRepository emiScheduleRepository;
     private final OverdueTrackerRepository overdueTrackerRepository;
     private final LoanRepository loanRepository;
-    private final LoanStatusTransitionServiceImpl loanStatusTransitionService;
+    private final LoanStatusTransitionService loanStatusTransitionService;
     private final AuditService auditService;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -115,7 +116,7 @@ public class OverdueMonitorServiceImpl implements OverdueMonitorService {
                             .oldStatus(oldStatus)
                             .newStatus(EmiStatus.OVERDUE.name())
                             .performedBy(null)  // system action
-//                            .actorRole(LoanConstants.ACTOR_SYSTEM)
+                            .actorRole(Role.SYSTEM)
                             .remarks("Days overdue: " + tracker.getDaysOverdue()
                                     + " | Penalty: ₹" + tracker.getFixedPenaltyAmount()
                                     + " | Daily charge: ₹" + tracker.getPenaltyCharge())
@@ -124,6 +125,27 @@ public class OverdueMonitorServiceImpl implements OverdueMonitorService {
             log.info("EMI {} marked OVERDUE — loan {}, days overdue: {}",
                     emi.getId(), emi.getLoan().getLoanNumber(), tracker.getDaysOverdue());
 
+        }
+
+        // Update daysOverdue for all already-detected (unresolved) overdue trackers.
+        // The initial scan above only processes PENDING EMIs on the first detection day.
+        // Without this second pass, daysOverdue is frozen at 1 and DEFAULTED never triggers.
+        List<OverdueTracker> unresolvedTrackers = overdueTrackerRepository.findByResolvedAtIsNull();
+        for (OverdueTracker tracker : unresolvedTrackers) {
+            tracker.setDaysOverdue(DateUtil.daysBetween(tracker.getDueDate(), today));
+            applyPenalty(tracker, tracker.getEmiSchedule());
+            overdueTrackerRepository.save(tracker);
+
+            Loan loan = tracker.getLoan();
+            if (tracker.getDaysOverdue() >= LoanConstants.DEFAULT_THRESHOLD_DAYS
+                    && loan.getStatus() == LoanStatus.ACTIVE) {
+                loanStatusTransitionService.transition(
+                        loan, LoanStatus.DEFAULTED,
+                        null, "Loan defaulted after " + tracker.getDaysOverdue() + " overdue days"
+                );
+                loanRepository.save(loan);
+                log.warn("Loan {} transitioned to DEFAULTED", loan.getId());
+            }
         }
     }
 
@@ -159,7 +181,7 @@ public class OverdueMonitorServiceImpl implements OverdueMonitorService {
                     .oldStatus(LoanStatus.DEFAULTED.name())
                     .newStatus(LoanStatus.WRITTEN_OFF.name())
                     .performedBy(null)
-                    .actorRole(Role.valueOf(LoanConstants.ACTOR_SYSTEM))
+                    .actorRole(Role.SYSTEM)
                     .remarks("Auto written-off after "
                             + LoanConstants.WRITTEN_OFF_DAYS + " days")
                     .build());
@@ -211,7 +233,8 @@ public class OverdueMonitorServiceImpl implements OverdueMonitorService {
             BigDecimal totalPenaltyCharge = MoneyUtil.roundHalfUp(  // aaj tak ki penalty charge, not included fix penalty charge
                     LoanConstants.OVERDUE_DAILY_PENALTY_RATE
                             .multiply(BigDecimal.valueOf(daysOverdue))
-                            .multiply(emi.getRemainingBalance())
+//                            .multiply(emi.getRemainingBalance())
+                            .multiply(emi.getTotalEmiAmount())
             );
 
             tracker.setPenaltyCharge(totalPenaltyCharge);

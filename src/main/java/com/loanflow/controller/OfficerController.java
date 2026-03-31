@@ -40,9 +40,11 @@ public class OfficerController {
             @PathVariable UUID applicationId,
             @Valid @RequestBody LoanDecisionRequest request) {
         User officer = securityUtils.getCurrentUser();
-        return ResponseEntity.ok(ApiResponse.ok(
-                loanService.processDecision(applicationId, request, officer)));
 
+        LoanResponse result = loanService.processDecision(applicationId, request, officer);
+        String message = result != null ? "Loan application approved." : "Loan application rejected.";
+
+        return ResponseEntity.ok(ApiResponse.ok(message, result));
     }
 
     @GetMapping("/reports/overdue")

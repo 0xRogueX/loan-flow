@@ -36,7 +36,6 @@ import java.time.LocalDate;
 import java.util.List;
 
 @Slf4j
-@Transactional
 @Service
 @RequiredArgsConstructor
 public class LoanApplicationServiceImpl implements LoanApplicationService {
@@ -172,6 +171,7 @@ public class LoanApplicationServiceImpl implements LoanApplicationService {
 
     //  CANCEL — only PENDING
     @Override
+    @Transactional
     public void cancelApplication(String applicationNumber, User borrower) {
 
         LoanApplication application = loanApplicationRepository

@@ -1,6 +1,7 @@
 package com.loanflow.integration;
 
 import com.loanflow.exception.CreditBureauException;
+import com.loanflow.integration.dto.CreditBureauRequest;
 import com.loanflow.integration.dto.CreditBureauResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,11 +29,8 @@ public class CreditBureauClient {
         log.info("Calling Credit Bureau for PAN: {}", panNumber);
 
         try {
-            HttpEntity<CreditBureauResponse> entity = new HttpEntity<>(
-                    CreditBureauResponse.builder()
-                            .panNumber(panNumber)
-                            .build(),
-                    getHeader());
+            HttpEntity<CreditBureauRequest> entity = new HttpEntity<>(
+                    new CreditBureauRequest(panNumber), getHeader());
 
             ResponseEntity<CreditBureauResponse> response =
                     restTemplate.postForEntity(url, entity, CreditBureauResponse.class);

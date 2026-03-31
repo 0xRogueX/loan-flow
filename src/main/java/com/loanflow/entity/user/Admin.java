@@ -7,7 +7,7 @@ import lombok.*;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "admin_profiles")
+@Table(name = "admin")
 @DiscriminatorValue("ADMIN")
 @Getter
 @Setter

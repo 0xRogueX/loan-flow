@@ -19,6 +19,9 @@ public interface OverdueTrackerRepository extends JpaRepository<OverdueTracker, 
 
     Optional<OverdueTracker> findByEmiSchedule(EmiSchedule emiSchedule);
 
+    // All unresolved overdue tracker records across all loans
+    List<OverdueTracker> findByResolvedAtIsNull();
+
     // All unresolved overdue records for a loan
     List<OverdueTracker> findByLoanAndResolvedAtIsNull(Loan loan);
 

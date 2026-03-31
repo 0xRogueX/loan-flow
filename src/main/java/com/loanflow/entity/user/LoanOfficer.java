@@ -5,7 +5,7 @@ import jakarta.validation.constraints.*;
 import lombok.*;
 
 @Entity
-@Table(name = "loan_officer_profiles")
+@Table(name = "loan_officer")
 @DiscriminatorValue("LOAN_OFFICER")
 @Getter
 @Setter

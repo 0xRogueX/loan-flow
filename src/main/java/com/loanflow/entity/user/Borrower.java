@@ -9,7 +9,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "borrower_profiles")
+@Table(name = "borrower")
 @DiscriminatorValue("BORROWER")
 @Getter
 @Setter
