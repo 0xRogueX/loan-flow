@@ -23,7 +23,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 @RestController
-@RequestMapping("/api/v1/borrower")
+@RequestMapping({"/api/v1/borrower", "/api/v1/loans"})
 @RequiredArgsConstructor
 @Slf4j
 @PreAuthorize("hasRole('BORROWER')")
@@ -79,7 +79,7 @@ public class BorrowerController {
         return ResponseEntity.ok(ApiResponse.ok("Loans fetched successfully.", loans));
     }
 
-    @GetMapping("/loans/{loanNumber}/schedule")
+    @GetMapping("/{loanNumber}/schedule")
     public ResponseEntity<ApiResponse<List<EmiScheduleResponse>>> getEmiSchedule(
             @PathVariable String loanNumber) {
 
