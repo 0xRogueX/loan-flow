@@ -7,6 +7,7 @@ import com.loanflow.dto.response.LoanApplicationResponse;
 import com.loanflow.dto.response.LoanResponse;
 import com.loanflow.entity.Loan;
 import com.loanflow.entity.user.User;
+import com.loanflow.enums.Role;
 import com.loanflow.exception.UnauthorizedAccessException;
 import com.loanflow.security.SecurityUtils;
 import com.loanflow.service.EmiScheduleService;
@@ -23,7 +24,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.*;
 
 @RestController
-@RequestMapping("/api/v1/borrower")
 @RequiredArgsConstructor
 @Slf4j
 @PreAuthorize("hasRole('BORROWER')")
@@ -35,7 +35,7 @@ public class BorrowerController {
     private final SecurityUtils securityUtils;
 
 
-    @PostMapping("/applications")
+    @PostMapping("/api/v1/borrower/applications")
     public ResponseEntity<ApiResponse<LoanApplicationResponse>> applyLoan(
             @Valid @RequestBody LoanApplicationRequest request) {
 
@@ -49,7 +49,7 @@ public class BorrowerController {
                 .body(ApiResponse.created("Loan application submitted successfully.", response));
     }
 
-    @PutMapping("/applications/{applicationNumber}/cancel")
+    @PutMapping("/api/v1/borrower/applications/{applicationNumber}/cancel")
     public ResponseEntity<ApiResponse<Void>> cancelApplication(
             @PathVariable String applicationNumber) {
 
@@ -61,7 +61,7 @@ public class BorrowerController {
         return ResponseEntity.ok(ApiResponse.ok("Application cancelled successfully.", null));
     }
 
-    @GetMapping("/applications")
+    @GetMapping("/api/v1/borrower/applications")
     public ResponseEntity<ApiResponse<List<LoanApplicationResponse>>> getMyApplications() {
 
         User borrower = securityUtils.getCurrentUser();
@@ -70,7 +70,7 @@ public class BorrowerController {
         return ResponseEntity.ok(ApiResponse.ok("Applications fetched successfully.", applications));
     }
 
-    @GetMapping("/loans")
+    @GetMapping("/api/v1/borrower/loans")
     public ResponseEntity<ApiResponse<List<LoanResponse>>> getMyLoans() {
 
         User borrower = securityUtils.getCurrentUser();
@@ -79,15 +79,18 @@ public class BorrowerController {
         return ResponseEntity.ok(ApiResponse.ok("Loans fetched successfully.", loans));
     }
 
-    @GetMapping("/loans/{loanNumber}/schedule")
+    @GetMapping({"/api/v1/borrower/loans/{loanNumber}/schedule", "/api/v1/loans/{loanNumber}/schedule"})
+    @PreAuthorize("hasAnyRole('BORROWER', 'LOAN_OFFICER')")
     public ResponseEntity<ApiResponse<List<EmiScheduleResponse>>> getEmiSchedule(
             @PathVariable String loanNumber) {
 
-        User borrower = securityUtils.getCurrentUser();
-        log.debug("Fetching EMI schedule for loan {} by borrower {}", loanNumber, borrower.getEmail());
+        User currentUser = securityUtils.getCurrentUser();
+        log.debug("Fetching EMI schedule for loan {} by user {}", loanNumber, currentUser.getEmail());
 
         Loan loan = loanService.findByLoanNumber(loanNumber);
-        if (!loan.getBorrower().getId().equals(borrower.getId())) {
+
+        // Borrowers may only view their own loan schedules; loan officers can view any
+        if (Role.BORROWER.equals(currentUser.getRole()) && !loan.getBorrower().getId().equals(currentUser.getId())) {
             throw new UnauthorizedAccessException("You can only view your own loan schedules.");
         }
 
