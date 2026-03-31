@@ -31,12 +31,9 @@ import java.util.UUID;
 public class AuditLog {
 
     /**
-     * Long + IDENTITY strategy (not UUID) — intentional.
-     * Audit logs are insert-only and never joined by their own id.
-     * Sequential Long ids give better index performance on
-     * append-only tables compared to random UUIDs.
-     * All other entities in the project use UUID — this is the
-     * only exception and it is documented here.
+     * UUID strategy — consistent with all other entities in the project.
+     * AuditLog does NOT extend BaseEntity because it has its own
+     * lightweight auditing fields (createdAt only, no version or updatedAt).
      */
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)

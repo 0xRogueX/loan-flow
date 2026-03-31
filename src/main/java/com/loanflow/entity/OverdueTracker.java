@@ -5,6 +5,7 @@ import com.loanflow.entity.user.User;
 import com.loanflow.enums.PenaltyStatus;
 import jakarta.persistence.*;
 import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import lombok.*;
@@ -44,7 +45,7 @@ public class OverdueTracker extends BaseEntity {
     private BigDecimal fixedPenaltyAmount = BigDecimal.ZERO;
 
     @Column(precision = 5, scale = 2)
-    @Min(0) @Max(100)
+    @DecimalMin("0.00") @DecimalMax("100.00")
     private BigDecimal penaltyRate = BigDecimal.ZERO;
 
     @Column(precision = 5, scale = 2)

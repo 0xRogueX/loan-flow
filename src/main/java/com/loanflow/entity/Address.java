@@ -38,7 +38,7 @@ public class Address extends BaseEntity {
     @Column(nullable = false)
     private String pincode;
 
-    //bidirectional mapping
-    @OneToOne(mappedBy = "address")
+    //bidirectional mapping — LAZY to avoid eager-loading the full Borrower graph
+    @OneToOne(mappedBy = "address", fetch = FetchType.LAZY)
     private Borrower borrower;
 }

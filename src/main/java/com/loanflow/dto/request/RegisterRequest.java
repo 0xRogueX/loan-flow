@@ -46,10 +46,10 @@ public class RegisterRequest {
 
     private String designation;
 
-    @Positive
+    @PositiveOrZero
     private Integer loansApprovedCount;
 
-    @Positive
+    @PositiveOrZero
     private Integer loansRejectedCount;
 //    private BigDecimal maxApprovalLimit;
 
