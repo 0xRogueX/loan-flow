@@ -61,6 +61,12 @@ public class PaymentServiceImpl implements PaymentService {
         // Guard 2: Loan must be ACTIVE
         ValidationUtil.ensureLoanIsActive(emi.getLoan());
 
+        // Guard 3: All prior installments must be paid before this one
+        boolean hasPriorUnpaid = emiScheduleRepository
+                .existsByLoanAndInstallmentNumberLessThanAndStatusNot(
+                        emi.getLoan(), emi.getInstallmentNumber(), EmiStatus.PAID);
+        ValidationUtil.ensureEmisPaidInSequence(emi, hasPriorUnpaid);
+
         // capture old status for audit log
         String oldEmiStatus = emi.getStatus().name();
 

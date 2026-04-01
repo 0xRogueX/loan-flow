@@ -37,6 +37,20 @@ public final class ValidationUtil {
     }
 
     /**
+     * Enforces sequential EMI payment order: all installments with a lower
+     * number must be PAID before the current one can be paid.
+     * The caller is responsible for querying whether any prior unpaid EMI
+     * exists and passing the result as {@code hasPriorUnpaidEmi}.
+     */
+    public static void ensureEmisPaidInSequence(EmiSchedule emiSchedule, boolean hasPriorUnpaidEmi) {
+        if (hasPriorUnpaidEmi) {
+            throw new BusinessRuleException(
+                    "Cannot pay installment " + emiSchedule.getInstallmentNumber()
+                            + ". All previous installments must be paid first.");
+        }
+    }
+
+    /**
      * Ensures the loan is ACTIVE before accepting any payment.
      * A CLOSED or DEFAULTED loan must not receive new payments
      * through the simulation flow.
