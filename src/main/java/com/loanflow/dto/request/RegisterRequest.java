@@ -42,8 +42,6 @@ public class RegisterRequest {
     private Address address;
 
     // ── Officer-specific (required when role = LOAN_OFFICER) ──
-    private String employeeId;
-
     private String designation;
 
     @PositiveOrZero

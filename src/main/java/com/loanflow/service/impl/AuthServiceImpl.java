@@ -9,6 +9,7 @@ import com.loanflow.entity.user.LoanOfficer;
 import com.loanflow.entity.user.User;
 import com.loanflow.exception.BusinessRuleException;
 import com.loanflow.exception.ResourceNotFoundException;
+import com.loanflow.repository.LoanOfficerRepository;
 import com.loanflow.repository.UserRepository;
 import com.loanflow.security.JwtTokenProvider;
 import com.loanflow.service.AuthService;
@@ -21,12 +22,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
+
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class AuthServiceImpl implements AuthService {
 
     private final UserRepository userRepository;
+    private final LoanOfficerRepository loanOfficerRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtTokenProvider jwtTokenProvider;
@@ -54,7 +59,7 @@ public class AuthServiceImpl implements AuthService {
             }
             case LOAN_OFFICER -> {
                 LoanOfficer o = new LoanOfficer();
-                o.setEmployeeId(req.getEmployeeId());
+                o.setEmployeeId(generateEmployeeId());
                 o.setDesignation(req.getDesignation());
 //                o.setMaxApprovalLimit(req.getMaxApprovalLimit());
                 yield o;
@@ -112,5 +117,15 @@ public class AuthServiceImpl implements AuthService {
                 .name(user.getName())
                 .email(user.getEmail())
                 .build();
+    }
+
+    private String generateEmployeeId() {
+        Long seqVal = loanOfficerRepository.getNextEmployeeIdSequence();
+
+        if (seqVal == null)
+            throw new IllegalStateException("Failed to retrieve next value from employee_id_seq: sequence returned null");
+
+        String datePrefix = LocalDate.now().format(DateTimeFormatter.BASIC_ISO_DATE);
+        return String.format("EMP-%s-%06d", datePrefix, seqVal);
     }
 }
