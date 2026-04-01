@@ -24,6 +24,16 @@ An `OverdueTracker` is created by the overdue scanner when it detects a missed p
 
 In financial systems, every database write must be explicit, traceable, and independently verifiable. Cascade makes writes implicit — the application code delegates to Hibernate, which inserts or deletes rows without explicit service-layer calls. This makes it impossible to log, audit, retry, or control each individual write. The design principle in this codebase is that every `INSERT` or `UPDATE` to a financially-significant table is a deliberate, named method call in a service class.
 
+### Cascade Decision Summary
+
+| Relationship | Cascade Set? | Risk if Cascade Were Enabled | Who Manages the Write Instead |
+|---|---|---|---|
+| `Loan` → `EmiSchedule` | ❌ None | Hibernate inserts 1–360 rows silently; failures undetectable per row | `EmiScheduleServiceImpl.generateSchedule()` → `saveAll()` |
+| `Payment` → `EmiSchedule` | ❌ None | Deleting a Payment would delete the EMI row, erasing amortization history | Never deleted; only read |
+| `Loan` → `OverdueTracker` | ❌ None | Deleting a Loan would delete overdue audit trail | `OverdueMonitorServiceImpl.scanAndMarkOverdue()` |
+| `Loan` → `Payment` | ❌ None | Deleting a Loan would erase payment receipts | `PaymentServiceImpl.simulatePayment()` |
+| `Loan` → `LoanStatusHistory` | ❌ None | Deleting a Loan would erase status change history | `LoanStatusTransitionServiceImpl.transition()` |
+
 ---
 
 ## 2. Why LAZY Loading Is Used Everywhere
@@ -60,7 +70,17 @@ In the daily overdue scanner, the repository fetches a list of `EmiSchedule` ent
 
 With EAGER: fetching 200 overdue EMI rows would immediately trigger 200 queries to load each associated `Loan`, plus potentially 200 more for each `Loan`'s `LoanApplication`, and so on down the graph. The scheduler, which runs at 1 AM on potentially thousands of records, could execute tens of thousands of SQL queries for a single run.
 
-With LAZY (current implementation): the repository query fetches the list of `EmiSchedule` rows. Each `emi.getLoan()` call inside the transaction loads the related loan on first access. Hibernate can use second-level caching, batch fetching, or JOIN FETCH hints to optimize these loads when needed, without the all-or-nothing overhead of EAGER.
+With LAZY (current implementation): the repository query fetches the list of `EmiSchedule` rows. Each `emi.getLoan()` call inside the transaction initializes the proxy and triggers a separate SQL query per loan unless a batch fetch size is configured or the query uses an explicit `JOIN FETCH`. LAZY loading defers these extra queries to the access point, making it possible to optimize with JOIN FETCH or batch-fetch hints when needed — but it does not eliminate N+1 automatically. The key advantage is that services which do not access `loan` at all pay zero cost, unlike EAGER which always loads it.
+
+### EAGER vs LAZY — Impact Table
+
+| Scenario | With EAGER | With LAZY (current) |
+|---|---|---|
+| Load 1 `Loan` | Joins `LoanApplication` + 2× `User` automatically | 1 query; associations loaded only if accessed |
+| Overdue scanner — 200 EMIs | 200 extra queries for `Loan`, 200 for `LoanApplication`, ... | 1 query for EMI list; each `emi.getLoan()` access triggers a per-row query unless JOIN FETCH or batch fetch is used |
+| Borrower profile fetch | Loads all their `Loan`s → all `EmiSchedule`s → thousands of rows | 1 query; no downstream loading |
+| `LazyInitializationException` risk | None (always loaded) | Only outside `@Transactional`; all services are `@Transactional` |
+| JPA annotation required | `fetch = FetchType.EAGER` or default for `@ManyToOne` | `fetch = FetchType.LAZY` (explicit on every field) |
 
 ---
 
@@ -95,6 +115,16 @@ Instead of navigating collections, all cross-entity queries in this codebase use
 - To find all applications for a borrower: `LoanApplicationRepository.findByBorrowerOrderByCreatedAtDesc(borrower)`.
 
 Each of these is a focused SQL query that returns exactly the data needed, without loading any parent entity's collection.
+
+### Bidirectional vs Unidirectional Trade-offs
+
+| Aspect | Bidirectional (NOT used) | Unidirectional (used everywhere) |
+|---|---|---|
+| Collection on parent | Yes — e.g., `Loan.emiSchedules` | No — parent has no child collection |
+| Accidental load risk | High — any `loan.getEmiSchedules()` call | None — no collection to access |
+| JSON serialization | Risk of infinite loop without `@JsonIgnore` | No risk — no back-reference |
+| Hibernate dirty tracking | Tracks collection changes on every flush | No collection to track |
+| Cross-entity queries | Navigate via collection field | Explicit repository method call |
 
 ---
 
@@ -152,6 +182,112 @@ Each of these is a focused SQL query that returns exactly the data needed, witho
 `AuditLog` references one entity:
 - `performedBy` (ManyToOne, LAZY, nullable): the user who performed the audited action. Null when the action was system-generated (overdue scanner, written-off scanner, automated jobs). Non-null for officer and borrower actions.
 
+### Entity Reference Summary Table
+
+| Entity | References | Cardinality | Nullable? | DB Column | Why Direct Reference |
+|---|---|---|---|---|---|
+| `LoanApplication` | `User borrower` | ManyToOne | No | `borrower_id` | Know who applied |
+| `LoanApplication` | `User reviewedBy` | ManyToOne | **Yes** | `reviewed_by` | Set only after officer acts |
+| `Loan` | `LoanApplication application` | OneToOne | No | `application_id` (unique) | Trace loan back to its origin |
+| `Loan` | `User borrower` | ManyToOne | No | `borrower_id` | Ownership, EMI queries |
+| `Loan` | `User approvedBy` | ManyToOne | No | `approved_by` | Accountability |
+| `EmiSchedule` | `Loan loan` | ManyToOne | No | `loan_id` | Each installment knows its loan |
+| `Payment` | `EmiSchedule emiSchedule` | OneToOne | No | `emi_schedule_id` (unique) | Double-payment DB guard |
+| `Payment` | `Loan loan` | ManyToOne | No | `loan_id` | Direct payment-by-loan query |
+| `Payment` | `User borrower` | ManyToOne | No | `borrower_id` | Audit, ownership |
+| `OverdueTracker` | `EmiSchedule emiSchedule` | OneToOne | No | `emi_schedule_id` (unique) | One tracker per missed EMI |
+| `OverdueTracker` | `Loan loan` | ManyToOne | No | `loan_id` | Direct overdue-by-loan query |
+| `OverdueTracker` | `User borrower` | ManyToOne | No | `borrower_id` | Notification targeting |
+| `LoanStatusHistory` | `Loan loan` | ManyToOne | No | `loan_id` | Full transition audit trail |
+| `LoanStatusHistory` | `User changedBy` | ManyToOne | **Yes** | `changed_by` | Null for system-triggered changes |
+| `Notification` | `User recipient` | ManyToOne | No | `recipient_id` | Who receives the email |
+| `Notification` | `Loan loan` | ManyToOne | **Yes** | `loan_id` | Null for account-level notifications |
+| `AuditLog` | `User performedBy` | ManyToOne | **Yes** | `performed_by` | Null for SYSTEM-role actions |
+
+### Entity Relationship Diagram
+
+```mermaid
+erDiagram
+    User {
+        Long id PK
+        String email UK
+        Role role
+        boolean isActive
+        boolean isDeleted
+    }
+    LoanApplication {
+        Long id PK
+        String applicationNumber UK
+        ApplicationStatus status
+        LoanStrategy suggestedStrategy
+        LoanStrategy finalStrategy
+        BigDecimal calculatedDti
+    }
+    Loan {
+        Long id PK
+        String loanNumber UK
+        LoanStatus status
+        LoanStrategy strategy
+        BigDecimal monthlyEmi
+        Integer tenureMonths
+    }
+    EmiSchedule {
+        Long id PK
+        Integer installmentNumber
+        LocalDate dueDate
+        BigDecimal totalEmiAmount
+        EmiStatus status
+    }
+    Payment {
+        Long id PK
+        String receiptNumber UK
+        BigDecimal paidAmount
+        LocalDateTime paidAt
+    }
+    OverdueTracker {
+        Long id PK
+        Integer daysOverdue
+        BigDecimal fixedPenaltyAmount
+        BigDecimal penaltyCharge
+        PenaltyStatus penaltyStatus
+        LocalDateTime resolvedAt
+    }
+    LoanStatusHistory {
+        Long id PK
+        LoanStatus oldStatus
+        LoanStatus newStatus
+        LocalDateTime changedAt
+    }
+    Notification {
+        Long id PK
+        NotificationEventType eventType
+        NotificationStatus status
+        Integer retryCount
+    }
+    AuditLog {
+        Long id PK
+        EntityType entityType
+        String action
+        String oldStatus
+        String newStatus
+        LocalDateTime createdAt
+    }
+
+    User ||--o{ LoanApplication : "borrower_id"
+    User ||--o{ Loan : "borrower_id"
+    User ||--o{ Payment : "borrower_id"
+    User ||--o{ OverdueTracker : "borrower_id"
+    User ||--o{ Notification : "recipient_id"
+    LoanApplication ||--o| Loan : "application_id (unique)"
+    Loan ||--o{ EmiSchedule : "loan_id"
+    Loan ||--o{ Payment : "loan_id"
+    Loan ||--o{ OverdueTracker : "loan_id"
+    Loan ||--o{ LoanStatusHistory : "loan_id"
+    Loan ||--o{ Notification : "loan_id (nullable)"
+    EmiSchedule ||--o| Payment : "emi_schedule_id (unique)"
+    EmiSchedule ||--o| OverdueTracker : "emi_schedule_id (unique)"
+```
+
 ---
 
 ## 6. The unique=true Constraint on Payment.emiSchedule
@@ -167,6 +303,13 @@ Application-layer checks (checking the EMI's current status before inserting) ar
 ### How It Works Together with the Service-Layer Guard
 
 The service guard (`ValidationUtil.ensureEmiNotAlreadyPaid(emi)`) runs first in the transaction. For the common case (no concurrency), it catches the double-payment attempt before any database interaction and returns a descriptive error message to the client. The database constraint is the safety net for edge cases where the service guard is bypassed by concurrent requests. Together, the two guards provide both good developer experience (clear error messages) and correctness guarantees (database-level enforcement).
+
+### Double-Payment Guard Layers
+
+| Guard Layer | Location | Mechanism | Catches | Limitation |
+|---|---|---|---|---|
+| Service guard | `ValidationUtil.ensureEmiNotAlreadyPaid()` | Check `emi.status == PAID` | Sequential duplicate calls | Race condition — two concurrent reads both see PENDING |
+| DB constraint | `payments.emi_schedule_id UNIQUE` | Database unique index | Concurrent inserts | Throws `DataIntegrityViolationException` — must be caught |
 
 ---
 
@@ -189,3 +332,21 @@ Instead, `AuditLog` has a single `createdAt` field populated directly with `Loca
 ### What @EntityListeners(AuditingEntityListener.class) Does
 
 This annotation is placed on `BaseEntity` (the superclass). It tells JPA to attach the Spring Data auditing listener to every entity that extends `BaseEntity`. The listener intercepts `@PrePersist` and `@PreUpdate` lifecycle events and populates the `@CreatedDate`, `@CreatedBy`, `@LastModifiedDate`, and `@LastModifiedBy` fields automatically before the entity is written to the database. Without this listener, those annotations would have no effect. `@EnableJpaAuditing(auditorAwareRef = "auditorProvider")` in `JpaAuditingConfig` activates this mechanism globally.
+
+### BaseEntity Fields Reference
+
+| Field | Annotation | Type | Populated By | Mutable? | Present on AuditLog? |
+|---|---|---|---|---|---|
+| `id` | `@Id @GeneratedValue(IDENTITY)` | `Long` | Database auto-increment | No (`updatable=false`) | Yes (own `@Id`) |
+| `createdAt` | `@CreatedDate` | `LocalDateTime` | `AuditingEntityListener` on `@PrePersist` | No (`updatable=false`) | Yes (own field, `LocalDateTime.now()`) |
+| `createdBy` | `@CreatedBy` | `String` | `AuditorAware` bean (email or "SYSTEM") | No (`updatable=false`) | No |
+| `updatedAt` | `@LastModifiedDate` | `LocalDateTime` | `AuditingEntityListener` on `@PreUpdate` | Yes | No |
+| `updatedBy` | `@LastModifiedBy` | `String` | `AuditorAware` bean | Yes | No |
+| `version` | `@Version` | `Long` | Hibernate (optimistic lock counter) | Managed by Hibernate | No |
+
+### Entities Extending BaseEntity vs AuditLog
+
+| Entity | Extends BaseEntity | Has @Version | Has @CreatedBy/@LastModifiedBy | Has updatedAt |
+|---|---|---|---|---|
+| `User`, `Loan`, `LoanApplication`, `EmiSchedule`, `Payment`, `OverdueTracker`, `LoanStatusHistory`, `Notification` | ✅ Yes | ✅ Yes | ✅ Yes | ✅ Yes |
+| `AuditLog` | ❌ No | ❌ No | ❌ No | ❌ No (immutable) |

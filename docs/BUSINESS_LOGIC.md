@@ -46,6 +46,17 @@ DTI_final gives the officer an accurate picture of how financially stretched the
 
 DTI_final is purely informational. Once the officer has made an approval decision and set the interest rate, the system calculates DTI_final and records it — but it does not enforce any threshold on it. The code that would have thrown a rejection if DTI_final exceeded 40% is present as a commented-out block in the loan service, indicating a deliberate design choice to leave final enforcement to officer judgment. This preserves officer discretion for edge cases (for example, a borrower with unusually high income relative to the loan amount, or a guarantor arrangement).
 
+### DTI Phases — Quick Comparison
+
+| Aspect | DTI_initial | DTI_final |
+|---|---|---|
+| When calculated | At application submission (`apply()`) | After officer sets rate, EMI schedule generated (`processDecision()`) |
+| Formula | `(internalEmi + externalEmi) / income × 100` | `(internalEmi + externalEmi + newLoanEmi) / income × 100` |
+| Includes new loan EMI? | No | Yes |
+| Enforcement | Hard gate — auto-rejects if > 40% | None — informational only (enforcement block commented out) |
+| Drives | Auto-reject OR strategy suggestion | Audit log entry; officer judgment only |
+| Stored on | `LoanApplication.calculatedDti` | Logged in `AuditLog.remarks` |
+
 ---
 
 ## 2. Strategy Selection Rules
@@ -74,6 +85,30 @@ When DTI_initial is above 40%, `suggestStrategy()` returns null. The application
 ### Whether the Borrower Can Choose a Strategy
 
 Borrowers cannot choose a repayment strategy. The system computes a suggestion automatically from DTI and tenure. The loan officer may override this suggestion by specifying a different strategy in the decision request. The final strategy used is whatever the officer submits (or, if the officer submits no override, the system suggestion). This design ensures that strategy selection is a risk-management decision made by a qualified officer, not a preference exercise by the borrower.
+
+### Strategy Decision Matrix
+
+| DTI_initial | Tenure (months) | Suggested Strategy | Outcome |
+|---|---|---|---|
+| < 20% | Any | `FLAT_RATE_LOAN` | PENDING, officer reviews |
+| 20% – 40% | < 24 | `REDUCING_BALANCE_LOAN` | PENDING, officer reviews |
+| 20% – 40% | ≥ 24 | `STEP_UP_EMI_LOAN` | PENDING, officer reviews |
+| > 40% | Any | `null` (auto-reject) | REJECTED immediately, no officer review |
+
+```mermaid
+flowchart TD
+    A[DTI_initial calculated] --> B{DTI < 20%?}
+    B -- Yes --> C[Suggest FLAT_RATE_LOAN]
+    B -- No --> D{DTI ≤ 40%?}
+    D -- No --> E[suggestStrategy = null → AUTO-REJECT]
+    D -- Yes --> F{Tenure < 24 months?}
+    F -- Yes --> G[Suggest REDUCING_BALANCE_LOAN]
+    F -- No --> H[Suggest STEP_UP_EMI_LOAN]
+    C --> I[Save as PENDING]
+    G --> I
+    H --> I
+    E --> J[Save as REJECTED]
+```
 
 ---
 
@@ -131,6 +166,29 @@ All three strategies use floating-point and fixed-precision arithmetic across ma
 
 All three strategies detect the last installment (when the installment counter equals the tenure) and use a special adjustment: the final EMI is set to `remainingBalance + lastMonthInterest` rather than the standard formula result. This ensures the remaining balance is forced to exactly zero. The `MoneyUtil.adjustFinalEmi()` method encapsulates this correction and is called consistently by all three strategy classes on the last installment.
 
+### EMI Strategy Comparison
+
+| Feature | FLAT_RATE | REDUCING_BALANCE | STEP_UP |
+|---|---|---|---|
+| Interest charged on | Original principal (fixed forever) | Outstanding balance (shrinks monthly) | Outstanding balance (shrinks monthly) |
+| Monthly EMI amount | Same every month | Same every month | Increases 5% each year |
+| Monthly principal component | Fixed | Increases over time | Varies monthly |
+| Monthly interest component | Fixed | Decreases over time | Decreases over time |
+| Base formula | `P/n + P×r` | PMT: `P×r×(1+r)^n / ((1+r)^n−1)` | Same PMT as base, then `× 1.05^yearIndex` |
+| EMI stored as `monthlyEmi` | Installment 1 amount | Installment 1 amount | Base EMI (year 1, before step-up) |
+| Higher effective interest? | Yes (interest never reduces) | No | Between the two |
+| Best for | Low DTI, short-term, simple | Medium DTI, < 24 months | Medium DTI, ≥ 24 months |
+
+### Step-Up Annual EMI Multipliers (for reference)
+
+| Loan Year | Months | Multiplier | Effect on base EMI |
+|---|---|---|---|
+| Year 1 | 1 – 12 | 1.05⁰ = 1.0000 | Base EMI unchanged |
+| Year 2 | 13 – 24 | 1.05¹ = 1.0500 | +5.00% |
+| Year 3 | 25 – 36 | 1.05² = 1.1025 | +10.25% |
+| Year 4 | 37 – 48 | 1.05³ = 1.1576 | +15.76% |
+| Year 5 | 49 – 60 | 1.05⁴ = 1.2155 | +21.55% |
+
 ---
 
 ## 4. Penalty Logic
@@ -166,6 +224,33 @@ Both components are stored on the `OverdueTracker` entity and can be inspected a
 
 When a borrower makes a payment for an overdue EMI (via the payment simulation endpoint), the system checks if the EMI's previous status was OVERDUE. If so, it finds the corresponding `OverdueTracker` record and sets `resolvedAt` to the current timestamp and `penaltyStatus` to `SETTLED`. The loan's overdue count is also decremented. The penalty fields themselves are not cleared — they remain as an immutable historical record of what was incurred.
 
+### Penalty Stages at a Glance
+
+| Stage | Days Overdue | Flat Fee | Daily Charge (`penaltyCharge`) | Total Penalty |
+|---|---|---|---|---|
+| Detection | Day 1 | ₹500 applied | ₹0 | ₹500 |
+| Grace Period | Days 2 – 30 | ₹500 (unchanged) | ₹0 | ₹500 |
+| Post-Grace | Day 31+ | ₹500 (unchanged) | `0.0005 × daysOverdue × totalEmiAmount` | ₹500 + daily charge |
+| Settled | On payment | Recorded (not cleared) | Recorded (not cleared) | `penaltyStatus = SETTLED` |
+
+```mermaid
+flowchart LR
+    A([EMI missed — Day 1]) -->|Set fixedPenalty = ₹500| B[Grace Period\nDays 1–30\npenaltyCharge = 0]
+    B -->|Day 31+| C[Daily Accumulation\npenaltyCharge = 0.0005 × days × EMI]
+    B -->|Borrower pays| D([SETTLED\npenaltyStatus = SETTLED\nresolvedAt = now])
+    C -->|Borrower pays| D
+```
+
+### Key Penalty Constants
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `LATE_FEE_FLAT_AMOUNT` | ₹500 | One-time flat fee on first detection |
+| `PENALTY_GRACE_DAYS` | 30 days | Grace window before daily charge starts |
+| `OVERDUE_DAILY_PENALTY_RATE` | 0.0005 (0.05%/day) | Rate used in `penaltyCharge` formula |
+| `DEFAULT_THRESHOLD_DAYS` | 90 days | Days overdue before loan becomes DEFAULTED |
+| `WRITTEN_OFF_DAYS` | 180 days | Days DEFAULTED before loan becomes WRITTEN_OFF |
+
 ---
 
 ## 5. Loan Lifecycle Status Rules
@@ -194,3 +279,32 @@ CLOSED means all financial obligations have been met. WRITTEN_OFF means the inst
 ### What the State Machine Protects Against
 
 The state machine throws an `InvalidStatusTransitionException` if any code attempts an illegal transition (such as moving a CLOSED loan back to ACTIVE, or transitioning directly from ACTIVE to WRITTEN_OFF). This protects against bugs, race conditions in schedulers, or incorrect API calls that could corrupt the loan's financial history.
+
+### Loan Lifecycle State Diagram
+
+```mermaid
+stateDiagram-v2
+    direction LR
+    [*] --> ACTIVE : Loan approved & disbursed\n(processDecision)
+
+    ACTIVE --> CLOSED : All EMIs paid\n(closeLoanIfCompleted)
+    ACTIVE --> DEFAULTED : daysOverdue ≥ 90\n(OverdueScanner @ 1AM)
+
+    DEFAULTED --> ACTIVE : Borrower resolves\noverdue EMIs
+    DEFAULTED --> WRITTEN_OFF : 180+ days DEFAULTED\n(WrittenOffScanner @ 1:30AM)
+
+    CLOSED --> [*] : Terminal — no further transitions
+    WRITTEN_OFF --> [*] : Terminal — no further transitions
+```
+
+### Allowed Transitions Table
+
+| From | To | Trigger | Who | LoanStatusHistory row written? |
+|---|---|---|---|---|
+| *(new)* | ACTIVE | Loan approved | Officer via `processDecision()` | No (starts directly as ACTIVE) |
+| ACTIVE | CLOSED | All EMI installments PAID | System — `closeLoanIfCompleted()` | Yes |
+| ACTIVE | DEFAULTED | Any EMI `daysOverdue ≥ 90` | System — `OverdueScanner` @ 1AM | Yes |
+| DEFAULTED | ACTIVE | Borrower clears overdue EMIs | System | Yes |
+| DEFAULTED | WRITTEN_OFF | Loan DEFAULTED for 180+ days | System — `WrittenOffScanner` @ 1:30AM | Yes |
+| CLOSED | *(none)* | Terminal | — | — |
+| WRITTEN_OFF | *(none)* | Terminal | — | — |

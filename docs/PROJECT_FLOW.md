@@ -22,6 +22,50 @@ If authentication succeeds, `JwtTokenProvider.generateToken(Authentication)` is 
 
 The response carries the token, the user's name, email, and role. The role is stored both inside the JWT as a claim and in the `users` table as an enum column.
 
+### Registration and Login Sequence
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant AC as AuthController
+    participant AS as AuthServiceImpl
+    participant UR as UserRepository
+    participant JWT as JwtTokenProvider
+
+    rect rgb(230,245,255)
+        Note over C,JWT: REGISTER
+        C->>AC: POST /api/v1/auth/register
+        AC->>AS: register(request)
+        AS->>UR: existsByEmail(email)
+        UR-->>AS: false
+        AS->>UR: save(User subtype)
+        UR-->>AS: saved User (users + borrowers tables)
+        AS-->>C: AuthResponse (name, email, role) — no token
+    end
+
+    rect rgb(230,255,230)
+        Note over C,JWT: LOGIN
+        C->>AC: POST /api/v1/auth/login
+        AC->>AS: login(request)
+        AS->>AS: authManager.authenticate(email, password)
+        Note right of AS: Calls CustomUserDetailsService internally
+        AS->>UR: findByEmail(email)
+        UR-->>AS: User
+        AS->>JWT: generateToken(Authentication)
+        JWT-->>AS: signed JWT string
+        AS-->>C: AuthResponse (token, role, name, email)
+    end
+```
+
+### What Gets Saved at Registration
+
+| Table | Row content | When |
+|---|---|---|
+| `users` | `id, name, email, bcrypt_password, phone, role, is_active=true, is_deleted=false` | On `userRepository.save()` |
+| `borrowers` | `id (FK), pan_number, date_of_birth, occupation, monthly_income` | Same save (JOINED inheritance) |
+| `loan_officers` | `id (FK), employee_id, designation` | Same save (JOINED inheritance) |
+| `admins` | `id (FK), access_level` | Same save (JOINED inheritance) |
+
 ---
 
 ## 2. Loan Application Submission (apply())
@@ -73,6 +117,44 @@ If the strategy is not null:
 
 **What the audit log captures:** Entity type (`LOAN_APPLICATION`), entity ID, action name, new status, the performing user object, actor role, and optional remarks. Old status is recorded for state changes; it is null for initial creation events.
 
+### Loan Application Submission Flow
+
+```mermaid
+flowchart TD
+    A([Borrower calls apply]) --> B{Active loans ≥ 3?}
+    B -- Yes --> C[Throw LoanLimitExceededException\n❌ No row saved]
+    B -- No --> D{PENDING/UNDER_REVIEW\napplication exists?}
+    D -- Yes --> E[Throw BusinessRuleException\n❌ No row saved]
+    D -- No --> F[fetchExternalEmi via Credit Bureau\nHTTP call — no DB write]
+    F --> G[sumActiveMonthlyEmi\nfrom loans table]
+    G --> H[Calculate DTI_initial]
+    H --> I{DTI > 40%?}
+    I -- Yes --> J[suggestStrategy = null]
+    J --> K[Build LoanApplication\nstatus = REJECTED]
+    K --> L[Generate APP-YYYYMMDD-XXXXXX\nvia DB sequence]
+    L --> M[Save to loan_applications\nstatus=REJECTED]
+    M --> N[Write AuditLog\naction=AUTO_REJECTED]
+    N --> O([Return response — done])
+    I -- No --> P[Suggest FLAT / REDUCING / STEP_UP]
+    P --> Q[Build LoanApplication\nstatus = PENDING]
+    Q --> R[Generate APP-YYYYMMDD-XXXXXX]
+    R --> S[Save to loan_applications\nstatus=PENDING]
+    S --> T[Write AuditLog\naction=SUBMITTED]
+    T --> O
+```
+
+### What Gets Saved During apply()
+
+| Step | Table | Action | Key Fields |
+|---|---|---|---|
+| Guard 1 fail | — | Exception thrown | — |
+| Guard 2 fail | — | Exception thrown | — |
+| Credit Bureau call | — | HTTP only, no DB write | — |
+| Auto-reject path | `loan_applications` | INSERT | `status=REJECTED`, `rejection_reason`, `calculated_dti`, `application_number` |
+| Auto-reject path | `audit_logs` | INSERT | `action=AUTO_REJECTED`, `actor_role=BORROWER` |
+| PENDING path | `loan_applications` | INSERT | `status=PENDING`, `suggested_strategy`, `calculated_dti`, `bureau_status`, `application_number` |
+| PENDING path | `audit_logs` | INSERT | `action=SUBMITTED`, `new_status=PENDING`, `performed_by=borrower` |
+
 ---
 
 ## 3. Officer Review and Decision (processDecision())
@@ -118,6 +200,46 @@ A database sequence is queried via `LoanRepository.getNextLoanSequence()`. The r
 
 The `LoanStatusTransitionService.transition()` method is not called during initial loan creation — the loan starts directly as ACTIVE. `LoanStatusHistory` rows are only written when the loan transitions between existing states (ACTIVE → DEFAULTED, DEFAULTED → WRITTEN_OFF, etc.). Each history record stores the old status, new status, the user who triggered the change (or null for system-triggered changes), the reason text, and the exact timestamp of the transition.
 
+### Officer Decision Flow
+
+```mermaid
+flowchart TD
+    A([Officer calls processDecision]) --> B[Fetch LoanApplication\nby applicationNumber]
+    B --> C[ensureApplicationIsReviewable\nvalidation guard]
+    C --> D[Set reviewedBy = officer\nSet reviewedAt = now]
+    D --> E{approved = true?}
+
+    E -- No --> F[Update status = REJECTED\nset rejectionReason]
+    F --> G[UPDATE loan_applications]
+    G --> H[Write AuditLog\naction=REJECTED]
+    H --> I[Publish LoanDecisionEvent\nasync email sent]
+    I --> J([Return null — no Loan created])
+
+    E -- Yes --> K{overrideStrategy\nprovided?}
+    K -- Yes --> L[finalStrategy = overrideStrategy]
+    K -- No --> M[finalStrategy = suggestedStrategy]
+    L --> N
+    M --> N[Resolve finalStrategy\nor throw if null]
+    N --> O[Set app.finalStrategy\nUPDATE loan_applications status=APPROVED]
+    O --> P[Calculate base EMI\nvia strategy BEFORE save]
+    P --> Q[INSERT into loans\nstatus=ACTIVE, monthlyEmi set]
+    Q --> R[generateSchedule → saveAll\nINSERT N rows into emi_schedules]
+    R --> S[Calculate DTI_final\ninformational only — logged]
+    S --> T[Write 2 AuditLog rows\none for app, one for loan]
+    T --> U[Publish LoanDecisionEvent\nasync email sent]
+    U --> V([Return LoanResponse])
+```
+
+### What Gets Saved During processDecision() — Approval Path
+
+| Order | Table | Action | Key Data |
+|---|---|---|---|
+| 1 | `loan_applications` | UPDATE | `status=APPROVED`, `final_strategy`, `reviewed_by`, `reviewed_at` |
+| 2 | `loans` | INSERT | `loan_number`, `strategy`, `monthly_emi`, `status=ACTIVE`, `disbursed_at` |
+| 3 | `emi_schedules` | BULK INSERT (`saveAll`) | N rows (N = tenure months); each has `installment_number`, `due_date`, `principal`, `interest`, `total_emi`, `remaining_balance` |
+| 4 | `audit_logs` | INSERT × 2 | Row 1: `entity_type=LOAN_APPLICATION, action=APPROVED` / Row 2: `entity_type=LOAN, action=CREATED` |
+| 5 | `notifications` | INSERT (async) | Via `NotificationEventListener` after `LoanDecisionEvent` |
+
 ---
 
 ## 4. EMI Schedule Generation
@@ -129,6 +251,14 @@ The `EmiScheduleServiceImpl.generateSchedule()` method delegates to the strategy
 - **StepUpEmiStrategy** uses the PMT formula for the base EMI, then applies the 5% annual multiplier for each year index when constructing each row.
 
 All three strategies build a `List<EmiSchedule>` and return it to the service. The service calls `emiScheduleRepository.saveAll(schedule)` — a single bulk-insert operation that sends one SQL batch statement for all installments rather than executing individual `INSERT` statements in a loop. For a 30-year loan, this inserts 360 rows in a single call. After saving, the service returns the first installment's `totalEmiAmount`, which is stored back on the `Loan` entity as `monthlyEmi`.
+
+### Strategy Class Responsibilities
+
+| Strategy Class | Algorithm | Rows Generated | `saveAll()` call |
+|---|---|---|---|
+| `FlatRateStrategy` | Fixed P/n + P×r for every row | `tenureMonths` | Yes — single batch |
+| `ReducingBalanceStrategy` | PMT formula once; per-row interest = balance × rate | `tenureMonths` | Yes — single batch |
+| `StepUpEmiStrategy` | PMT for base; per-row EMI = base × 1.05^yearIndex | `tenureMonths` | Yes — single batch |
 
 ---
 
@@ -154,6 +284,33 @@ After every payment, `LoanService.closeLoanIfCompleted()` queries the `emi_sched
 ### What Fires When the Last EMI Is Paid
 
 A `LoanClosedEvent` is published. The event listener handles this asynchronously and sends a loan closure notification email to the borrower.
+
+### Payment Simulation Flow
+
+```mermaid
+flowchart TD
+    A([simulatePayment called]) --> B[Fetch EmiSchedule by ID]
+    B --> C{EMI already PAID?}
+    C -- Yes --> D[Throw exception\nservice-layer guard]
+    C -- No --> E{Loan status\n= ACTIVE?}
+    E -- No --> F[Throw exception]
+    E -- Yes --> G[Capture oldEmiStatus]
+    G --> H[emi.status = PAID\nemi.paidAt = now\nUPDATE emi_schedules]
+    H --> I[INSERT into payments\nreceipt number generated]
+    I --> J{oldEmiStatus\n= OVERDUE?}
+    J -- Yes --> K[Find OverdueTracker\nresolvedAt = now\npenaltyStatus = SETTLED\nUPDATE overdue_tracker]
+    K --> L[loan.overDueCount - 1\nUPDATE loans]
+    J -- No --> M
+    L --> M[Write AuditLog\naction=MARKED_PAID]
+    M --> N[Publish PaymentReceivedEvent\nasync email]
+    N --> O[closeLoanIfCompleted:\ncount unpaid EMIs]
+    O --> P{unpaidCount = 0?}
+    P -- No --> Q([Return PaymentResponse])
+    P -- Yes --> R[Transition ACTIVE → CLOSED\nINSERT loan_status_history]
+    R --> S[loan.closedAt = now\nUPDATE loans]
+    S --> T[Publish LoanClosedEvent\nasync email]
+    T --> Q
+```
 
 ---
 
@@ -181,6 +338,19 @@ The scanner calls `EmiScheduleRepository.findByStatusAndDueDateBefore(EmiStatus.
 ### Second Pass: Updating Already-Detected Trackers
 
 After processing newly-detected overdue EMIs, the scanner runs a second loop: it fetches all `OverdueTracker` records whose `resolvedAt` is null (still unresolved). For each, it recalculates `daysOverdue` and reapplies the penalty. This second pass is essential — without it, the `daysOverdue` counter would freeze at 1 and the DEFAULTED threshold would never be reached for EMIs detected on earlier days.
+
+### Overdue Scanner — DB Writes Per Missed EMI
+
+| Step | Table | Operation | Notes |
+|---|---|---|---|
+| Mark OVERDUE | `emi_schedules` | UPDATE | `status = OVERDUE` |
+| Create/update tracker | `overdue_tracker` | INSERT or UPDATE | `detectedAt` only set once |
+| Apply penalty | `overdue_tracker` | UPDATE | `fixed_penalty=500`, `penalty_charge` after grace |
+| Increment overdueCount | `loans` | UPDATE | `over_due_count + 1` |
+| DEFAULTED transition (if ≥ 90d) | `loans` | UPDATE | `status = DEFAULTED` |
+| DEFAULTED transition (if ≥ 90d) | `loan_status_history` | INSERT | `old=ACTIVE, new=DEFAULTED` |
+| Alert (first time only) | `notifications` | INSERT (async) | `alertCount` set to 1 after |
+| Audit log | `audit_logs` | INSERT | `entity_type=EMI_SCHEDULE, action=MARK_OVERDUE` |
 
 ---
 
@@ -211,3 +381,43 @@ The `NotificationRetryScheduler` runs every **30 minutes** via cron `0 0/30 * * 
 The `NotificationService.resend()` method is called for each retryable notification. It attempts to send the email via `JavaMailSender`. If the attempt succeeds, the notification's status is updated to SENT and `sentAt` is recorded. If the attempt fails, the notification's `retryCount` is incremented by 1 and the failure reason is updated. The notification record is saved either way.
 
 Once a notification's `retryCount` reaches 3, it will no longer be returned by the query (because the query filters for `retryCount < MAX_NOTIFICATION_RETRIES`). The notification remains in FAILED status indefinitely after exhausting all retries. No further send attempts are made automatically. An administrator can inspect failed notifications via the admin API.
+
+---
+
+## 9. Payment Reminder Scheduler
+
+The `PaymentReminderScheduler` runs every day at **9:00 AM** via cron `0 0 9 * * *`.
+
+### Query
+
+`EmiScheduleRepository.findUpcomingEmisWithBorrower(EmiStatus.PENDING, reminderDate)` is called, where `reminderDate = today + PAYMENT_REMINDER_DAYS_BEFORE` (3 days). This query uses a `JOIN FETCH` to eagerly load the associated borrower in the same SQL statement, avoiding a separate lookup when building the reminder email. It returns all PENDING installments whose `dueDate` equals exactly 3 days from today.
+
+### What Fires
+
+For each returned `EmiSchedule`, a `PaymentReminderEvent` is published synchronously. The asynchronous event listener handles this and sends a reminder email to the borrower. No table row is written by the scheduler itself — the `notifications` table is written by the notification service called from the event listener.
+
+### Why JOIN FETCH Is Used Here (Unlike the Overdue Scanner)
+
+The overdue scanner processes EMIs inside a `@Transactional` service method, so LAZY proxies for `emi.getLoan()` and `emi.getLoan().getBorrower()` are safely initialized on demand. The payment reminder scheduler is `@Transactional(readOnly = true)`, but because the reminder email requires the borrower's email address, the query explicitly JOIN FETCHes the borrower to load everything in one SQL round-trip rather than triggering lazy initialization per row.
+
+---
+
+## Scheduler Summary
+
+| Scheduler | Cron | Runs At | Primary Action | Tables Written |
+|---|---|---|---|---|
+| `OverdueScheduler.runOverdueScan` | `0 0 1 * * *` | 1:00 AM daily | Mark PENDING past-due EMIs as OVERDUE; apply penalties; check DEFAULTED | `emi_schedules`, `overdue_tracker`, `loans`, `loan_status_history`, `audit_logs`, `notifications` |
+| `OverdueScheduler.runWrittenOffScan` | `0 30 1 * * *` | 1:30 AM daily | Transition DEFAULTED loans (180+ days) to WRITTEN_OFF | `loans`, `loan_status_history`, `audit_logs` |
+| `NotificationRetryScheduler` | `0 0/30 * * * *` | Every 30 min | Resend FAILED notifications (retryCount < 3) | `notifications` |
+| `PaymentReminderScheduler.runPaymentReminders` | `0 0 9 * * *` | 9:00 AM daily | Send reminder 3 days before EMI due date | `notifications` |
+
+## Events and Async Notification Triggers
+
+| Event | Published by | Async handler action | Table written |
+|---|---|---|---|
+| `LoanApplicationSubmittedEvent` | `apply()` (commented out) | — | — |
+| `LoanDecisionEvent` (APPROVED) | `processDecision()` | Send approval email | `notifications` |
+| `LoanDecisionEvent` (REJECTED) | `processDecision()` | Send rejection email | `notifications` |
+| `PaymentReceivedEvent` | `simulatePayment()` | Send payment confirmation email | `notifications` |
+| `LoanClosedEvent` | `closeLoanIfCompleted()` | Send loan closed email | `notifications` |
+| `OverdueAlertEvent` | `scanAndMarkOverdue()` | Send overdue alert email (once per EMI) | `notifications` |

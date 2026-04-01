@@ -33,6 +33,22 @@ The JWT secret is stored in configuration as a Base64-encoded string. `JwtTokenP
 
 When a token's expiration time has passed, `JwtTokenProvider.validateToken()` catches the `ExpiredJwtException` thrown by the JJWT parser, logs a warning, and returns false. The filter does not set any authentication in the security context. The request is treated as unauthenticated. For a protected endpoint, Spring Security's `JwtAuthenticationEntryPoint` returns a 401 Unauthorized response. The client must obtain a new token by calling the login endpoint again.
 
+### JWT Claims Reference Table
+
+| Claim | Key | Example Value | Populated By |
+|---|---|---|---|
+| Subject (email) | `sub` | `borrower@example.com` | `generateToken` / `generateTokenForUser` |
+| Issued at | `iat` | Unix timestamp | JJWT builder `.issuedAt(new Date())` |
+| Expiration | `exp` | Unix timestamp (`iat + expiration-ms`) | JJWT builder `.expiration(expiryDate)` |
+| Roles | `roles` | `["ROLE_BORROWER"]` | Extracted from `Authentication.getAuthorities()` |
+
+### Token Generation Methods Compared
+
+| Method | Used At | Authority Source | Returns Token to Client? |
+|---|---|---|---|
+| `generateToken(Authentication)` | Login | `Authentication.getAuthorities()` from `UserDetails` | Yes — in `AuthResponse.token` |
+| `generateTokenForUser(User)` | Registration (fallback) | `"ROLE_" + user.getRole().name()` from entity | No — registration response omits token |
+
 ---
 
 ## 2. Request Authentication Flow — Step by Step
@@ -64,6 +80,43 @@ The `filterChain.doFilter(request, response)` call is placed at the very end of 
 - For valid tokens: the request proceeds with the security context set, and the downstream filter chain and controller process the authenticated request.
 - For invalid/missing tokens: the request proceeds with no authentication context set. For public endpoints, the request succeeds. For protected endpoints, Spring Security's authorization layer intercepts the request and returns a 401 response. The filter does not decide authorization — it only sets up authentication when possible.
 
+### Request Authentication Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant C as Client
+    participant F as JwtAuthenticationFilter
+    participant JP as JwtTokenProvider
+    participant UDS as CustomUserDetailsService
+    participant DB as users table
+    participant SC as SecurityContextHolder
+    participant CTRL as Controller / Method Security
+
+    C->>F: HTTP Request (Authorization: Bearer <token>)
+    F->>F: Extract token from header
+    alt No token or wrong prefix
+        F->>CTRL: filterChain.doFilter() — no auth set
+    else Token present
+        F->>JP: validateToken(token)
+        alt Invalid / expired
+            JP-->>F: false
+            F->>CTRL: filterChain.doFilter() — no auth set
+        else Valid
+            JP-->>F: true
+            F->>JP: getUsername(token) → email
+            JP-->>F: email
+            F->>UDS: loadUserByUsername(email)
+            UDS->>DB: SELECT * FROM users WHERE email = ?
+            DB-->>UDS: User row
+            UDS->>UDS: check isDeleted() then isActive()
+            UDS-->>F: UserDetails (email, BCrypt hash, [ROLE_X])
+            F->>SC: setAuthentication(UsernamePasswordAuthToken)
+            F->>CTRL: filterChain.doFilter() — auth set
+        end
+    end
+    CTRL-->>C: HTTP Response (200 / 401 / 403)
+```
+
 ---
 
 ## 3. Public vs Protected Endpoints
@@ -90,6 +143,29 @@ For requests to protected endpoints with no token: `JwtAuthenticationFilter` fin
 
 For requests to protected endpoints with an invalid or expired token: `validateToken()` returns false (or throws a caught exception), no security context is set, and the same 401 path is taken.
 
+### Public Endpoints Reference
+
+| Endpoint | Method | Reason No Auth Required |
+|---|---|---|
+| `/api/v1/auth/register` | POST | User doesn't have a token yet |
+| `/api/v1/auth/login` | POST | User doesn't have a token yet |
+| `/actuator/health` | GET | Infrastructure / load-balancer health probes |
+| `/v3/api-docs/**` | GET | OpenAPI spec for tooling |
+| `/swagger-ui/**` | GET | API documentation browser |
+| `/swagger-ui.html` | GET | API documentation browser |
+
+### Token Presence vs Endpoint Type — Outcome Matrix
+
+| Token Present? | Token Valid? | Endpoint Type | Result |
+|---|---|---|---|
+| No | — | Public | ✅ 200 — allowed |
+| No | — | Protected | ❌ 401 — `JwtAuthenticationEntryPoint` |
+| Yes | Expired | Public | ✅ 200 — allowed (no auth check) |
+| Yes | Expired | Protected | ❌ 401 — filter sets no auth context |
+| Yes | Valid | Public | ✅ 200 — allowed |
+| Yes | Valid | Protected (correct role) | ✅ 200 — allowed |
+| Yes | Valid | Protected (wrong role) | ❌ 403 — `AccessDeniedException` |
+
 ---
 
 ## 4. Role-Based Access Control
@@ -114,6 +190,27 @@ The `@EnableMethodSecurity` annotation on `SecurityConfig` activates Spring's me
 
 If a borrower's valid JWT is used to call an endpoint annotated with `@PreAuthorize("hasRole('LOAN_OFFICER')")`, the method security interceptor evaluates the expression, finds that `ROLE_LOAN_OFFICER` is absent from the borrower's authorities, and throws an `AccessDeniedException`. The global exception handler maps this to a 403 Forbidden response.
 
+### Role-to-Controller Access Matrix
+
+| Controller | Annotation / Guard | BORROWER | LOAN_OFFICER | ADMIN |
+|---|---|---|---|---|
+| `BorrowerController` (all methods) | `@PreAuthorize("hasRole('BORROWER')")` | ✅ | ❌ 403 | ❌ 403 |
+| `OfficerController` (all methods) | `@PreAuthorize("hasRole('LOAN_OFFICER')")` | ❌ 403 | ✅ | ❌ 403 |
+| `AdminController` (all methods) | `@PreAuthorize("hasRole('ADMIN')")` | ❌ 403 | ❌ 403 | ✅ |
+| `PaymentController` (simulate) | `@PreAuthorize("hasRole('BORROWER')")` | ✅ | ❌ 403 | ❌ 403 |
+| `GET /loans/{id}/schedule` | `hasAnyRole('BORROWER','LOAN_OFFICER')` + ownership | ✅ (own only) | ✅ (any) | ❌ 403 |
+| `GET /loans/{id}/payments` | `LOAN_OFFICER` bypass OR `isOwner` check | ✅ (own only) | ✅ (any) | ❌ 403 |
+| `AuthController` (`/register`, `/login`) | Public (`permitAll`) | ✅ | ✅ | ✅ |
+
+### Role Storage Path
+
+```mermaid
+flowchart LR
+    A[users.role column\nEnum: BORROWER] -->|CustomUserDetailsService| B["SimpleGrantedAuthority\n'ROLE_BORROWER'"]
+    B -->|JwtAuthFilter sets| C[SecurityContext\nAuthentication.authorities]
+    C -->|@PreAuthorize reads| D{hasRole check\npasses or throws 403}
+```
+
 ---
 
 ## 5. Ownership Checks
@@ -131,6 +228,13 @@ A role check confirms that the caller is a borrower, but it does not prevent one
 **EMI Schedule access (`BorrowerController.getEmiSchedule()`):** After fetching the loan by loan number, the controller checks whether the authenticated user is a BORROWER. If so, it compares the loan's borrower ID against the authenticated user's ID. Loan officers are exempt from this check and can view any loan's schedule.
 
 **Payment history access (`PaymentServiceImpl.getPaymentsByLoanNumber()`):** After fetching the loan, the service checks whether the caller is a LOAN_OFFICER. If not, it calls `securityUtils.isOwner(loan.getBorrower().getId())`. If the caller does not own the loan, an `UnauthorizedAccessException` is thrown.
+
+### Ownership Check Summary
+
+| Endpoint | Role Gate | Ownership Check | Officer Exempt? |
+|---|---|---|---|
+| `GET /loans/{loanNumber}/schedule` | `hasAnyRole('BORROWER','LOAN_OFFICER')` | `loan.borrower.id == currentUser.id` | Yes |
+| `GET /loans/{loanNumber}/payments` | None explicit | `securityUtils.isOwner(loan.getBorrower().getId())` | Yes — officer bypasses isOwner |
 
 ---
 
@@ -150,6 +254,15 @@ The `BCryptPasswordEncoder` in `SecurityConfig` is created with `new BCryptPassw
 
 `PasswordEncoder` is defined as a Spring bean in `SecurityConfig`. It is injected into `AuthServiceImpl` via constructor injection (`@RequiredArgsConstructor`) and used in the `register()` method.
 
+### BCrypt Usage Summary
+
+| Operation | Method | Where |
+|---|---|---|
+| Hash at registration | `passwordEncoder.encode(rawPassword)` | `AuthServiceImpl.register()` |
+| Verify at login | `passwordEncoder.matches(raw, encoded)` | `AuthenticationManager` internally |
+| Bean definition | `new BCryptPasswordEncoder()` (cost=10) | `SecurityConfig.passwordEncoder()` |
+| Injection point | Constructor injection `@RequiredArgsConstructor` | `AuthServiceImpl` |
+
 ---
 
 ## 7. Soft Delete and Deactivation
@@ -165,3 +278,24 @@ Immediately after the deletion check, `user.isActive()` is tested. If the accoun
 ### The Order of These Checks and Why It Matters
 
 The deletion check runs first, followed by the deactivation check. This ordering matters because a deleted account should present a different error message than a deactivated one, and the deletion check is the more absolute condition. If deactivation were checked first, a deleted user who is also deactivated might receive a misleading "Account is deactivated" message rather than the correct "Account no longer exists" message. Checking deletion first ensures the most accurate and appropriate error is surfaced.
+
+### Account State Checks in loadUserByUsername
+
+| Check Order | Field Checked | Value Causing Failure | Exception Thrown | HTTP Result |
+|---|---|---|---|---|
+| 1st | `user.isDeleted()` | `true` | `UsernameNotFoundException` | 401 |
+| 2nd | `user.isActive()` | `false` | `DisabledException` | 401 |
+| — | Both pass | — | `UserDetails` returned | Authentication proceeds |
+
+```mermaid
+flowchart TD
+    A[loadUserByUsername called\nwith email] --> B[SELECT FROM users\nWHERE email = ?]
+    B --> C{User found?}
+    C -- No --> D[Throw UsernameNotFoundException\n→ 401]
+    C -- Yes --> E{isDeleted = true?}
+    E -- Yes --> F[Throw UsernameNotFoundException\n'Account no longer exists'\n→ 401]
+    E -- No --> G{isActive = false?}
+    G -- Yes --> H[Throw DisabledException\n'Account is deactivated'\n→ 401]
+    G -- No --> I[Build UserDetails\nemail, BCrypt hash, ROLE_X]
+    I --> J[Return UserDetails\n→ Authentication proceeds]
+```
