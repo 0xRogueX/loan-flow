@@ -40,4 +40,13 @@ public interface EmiScheduleRepository extends JpaRepository<EmiSchedule, Long> 
 
     // Used by PaymentService to check if all EMIs are PAID
     Long countByLoanAndStatusNot(Loan loan, EmiStatus status);
+
+    /**
+     * Returns true if the given loan has any EMI with an installment number
+     * lower than {@code installmentNumber} that is NOT in the given status.
+     * Used to enforce sequential payment: every prior installment must be
+     * PAID before the current one can be paid.
+     */
+    boolean existsByLoanAndInstallmentNumberLessThanAndStatusNot(
+            Loan loan, Integer installmentNumber, EmiStatus status);
 }
